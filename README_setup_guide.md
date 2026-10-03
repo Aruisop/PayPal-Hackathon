@@ -1,5 +1,7 @@
 # PayPal Sandbox checkout demo
 
+For architecture, handoff status, development pitfalls, and the tested US buyer / IN seller account pairing, read the [coworker development guide](docs/DEVELOPMENT_GUIDE.md).
+
 This repository includes a runnable checkout for a fixed **$25.00 USD** demo product. It creates orders and captures approved payments on the server, renders PayPal buttons in the browser, and supports a forced decline at capture.
 
 ## Run the demo
