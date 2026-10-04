@@ -1,195 +1,175 @@
-"""Local PayPal Sandbox checkout demo. Python 3.10+, no dependencies."""
-import base64
-import json
+﻿"""Persistent individual workshop checkout, served with Waitress."""
+import argparse
+import hmac
 import os
-import re
-import secrets
-import threading
-import time
-import urllib.error
-import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
+from flask import Flask, g, jsonify, make_response, request, send_from_directory
+from markupsafe import escape
+from checkout import Checkout, CheckoutError
+from payments import PayPal, PayPalError
+from storage import Store
 
 ROOT = Path(__file__).resolve().parent
-BASE = 'https://api-m.sandbox.paypal.com'
-PRODUCT = {'name': 'Weekend explorer kit', 'value': '25.00', 'currency': 'USD'}
-
 
 def load_env():
     path = ROOT / '.env'
     if path.exists():
-        for line in path.read_text(encoding='utf-8').splitlines():
+        for line in path.read_text(encoding='utf-8-sig').splitlines():
             if line.strip() and not line.lstrip().startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
-                os.environ.setdefault(key.strip(), value.strip().strip('\"\''))
+                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
+def create_app(config=None, paypal=None):
+    app = Flask(__name__, static_folder=None)
+    app.config.update(DATABASE_URL=os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db'),
+        APP_ENV=os.getenv('APP_ENV', 'development'), APP_ORIGIN=os.getenv('APP_ORIGIN', 'http://localhost:8000').rstrip('/'),
+        COOKIE_SECURE=os.getenv('COOKIE_SECURE', 'false').lower() == 'true', MAX_CONTENT_LENGTH=4096)
+    if config:
+        app.config.update(config)
+    if app.config['APP_ENV'] == 'production':
+        if not app.config['DATABASE_URL'].startswith(('postgres://', 'postgresql://', 'postgresql+psycopg://')):
+            raise RuntimeError('Production requires durable managed PostgreSQL, not local SQLite')
+        if not app.config['APP_ORIGIN'].startswith('https://') or not app.config['COOKIE_SECURE']:
+            raise RuntimeError('Production requires HTTPS APP_ORIGIN and COOKIE_SECURE=true')
+    store = Store(app.config['DATABASE_URL'])
+    if app.config['APP_ENV'] != 'production':
+        store.migrate()
+        store.seed()
+    else:
+        from sqlalchemy import select
+        from storage import versions
+        with store.engine.connect() as connection:
+            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 1:
+                raise RuntimeError('Run python server.py migrate before starting')
+    adapter = paypal or PayPal(os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''),
+                               os.getenv('PAYPAL_MERCHANT_ID', ''))
+    checkout = Checkout(store, adapter)
+    app.extensions.update(store=store, checkout=checkout, paypal=adapter)
 
-class PayPalError(Exception):
-    def __init__(self, issue, debug_id='', status=502):
-        self.issue, self.debug_id, self.status = issue, debug_id, status
+    @app.before_request
+    def authorize():
+        if request.host != urlparse(app.config['APP_ORIGIN']).netloc:
+            return jsonify(error='INVALID_HOST'), 400
+        g.participant = store.participant(request.cookies.get('workshop_session'))
+        if (request.path.startswith('/api/') and request.path != '/api/config') or request.path.startswith('/lessons/'):
+            if not g.participant:
+                return jsonify(error='PARTICIPANT_SESSION_REQUIRED'), 401
+        if request.method == 'POST':
+            if (request.headers.get('Origin') != app.config['APP_ORIGIN'] or not g.participant or
+                not hmac.compare_digest(request.headers.get('X-CSRF-Token', ''), g.participant['csrf_token'])):
+                return jsonify(error='INVALID_ORIGIN_OR_CSRF'), 403
 
+    @app.after_request
+    def headers(response):
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['X-Frame-Options'] = 'DENY'
+        return response
 
-class PayPal:
-    def __init__(self, client_id, secret):
-        self.client_id, self.secret = client_id, secret
-        self.token, self.expires = '', 0
+    @app.errorhandler(CheckoutError)
+    def checkout_error(error):
+        return jsonify(error=error.issue), error.status
 
-    def request(self, path, payload=None, headers=None, form=None):
-        body = form.encode() if form else json.dumps(payload).encode()
-        request = urllib.request.Request(BASE + path, data=body, headers=headers or {}, method='POST')
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as error:
-            try:
-                data = json.loads(error.read())
-            except (ValueError, UnicodeDecodeError):
-                data = {}
-            issue = (data.get('details') or [{}])[0].get('issue') or data.get('error') or data.get('name') or 'PAYPAL_ERROR'
-            raise PayPalError(issue, data.get('debug_id', ''), 422 if error.code == 422 else 502) from error
-        except (urllib.error.URLError, TimeoutError, ValueError) as error:
-            raise PayPalError('PAYPAL_UNAVAILABLE') from error
+    @app.errorhandler(PayPalError)
+    def paypal_error(error):
+        return jsonify(error=error.issue, debugID=error.debug_id), error.status
 
-    def access_token(self):
-        if time.time() >= self.expires:
-            basic = base64.b64encode(f'{self.client_id}:{self.secret}'.encode()).decode()
-            data = self.request('/v1/oauth2/token', headers={
-                'Authorization': 'Basic ' + basic,
-                'Content-Type': 'application/x-www-form-urlencoded',
-            }, form='grant_type=client_credentials')
-            self.token = data['access_token']
-            self.expires = time.time() + int(data['expires_in']) - 60
-        return self.token
+    @app.errorhandler(404)
+    def not_found(_):
+        return jsonify(error='NOT_FOUND'), 404
 
-    def order_request(self, path, payload, request_id, decline=False):
-        headers = {'Authorization': 'Bearer ' + self.access_token(),
-                   'Content-Type': 'application/json', 'PayPal-Request-Id': request_id}
-        if decline:
-            headers['PayPal-Mock-Response'] = json.dumps({'mock_application_codes': 'INSTRUMENT_DECLINED'})
-        return self.request(path, payload, headers)
+    @app.errorhandler(400)
+    def invalid_json(_):
+        return jsonify(error='INVALID_REQUEST'), 400
 
+    @app.get('/')
+    def index():
+        return send_from_directory(ROOT / 'public', 'index.html')
 
-class Checkout:
-    def __init__(self, paypal):
-        self.paypal = paypal
-        self.orders = {}
-        self.lock = threading.Lock()
+    @app.get('/app.js')
+    def javascript():
+        return send_from_directory(ROOT / 'public', 'app.js')
 
-    def create(self, session, decline=False):
-        # Serialize the small local demo's requests, including capture retries.
-        with self.lock:
-            self.orders = {key: value for key, value in self.orders.items() if value['expires'] > time.time()}
-            if len(self.orders) >= 500:
-                raise PayPalError('TOO_MANY_ORDERS', status=429)
-            data = self.paypal.order_request('/v2/checkout/orders', {
-                'intent': 'CAPTURE', 'purchase_units': [{
-                    'description': PRODUCT['name'],
-                    'amount': {'currency_code': PRODUCT['currency'], 'value': PRODUCT['value']},
-                }],
-            }, secrets.token_hex(16))
-            order_id = data['id']
-            self.orders[order_id] = {'session': session, 'decline': decline,
-                                     'capture_key': secrets.token_hex(16), 'result': None,
-                                     'expires': time.time() + 3600}
-            return {'id': order_id}
+    @app.get('/style.css')
+    def stylesheet():
+        return send_from_directory(ROOT / 'public', 'style.css')
 
-    def capture(self, session, order_id):
-        with self.lock:
-            order = self.orders.get(order_id)
-            if not order or order['session'] != session or order['expires'] <= time.time():
-                raise PayPalError('ORDER_NOT_FOUND', status=404)
-            if order['result']:
-                return order['result']
-            data = self.paypal.order_request(f'/v2/checkout/orders/{order_id}/capture', {},
-                                             order['capture_key'], order['decline'])
-            captures = [capture for unit in data.get('purchase_units', [])
-                        for capture in unit.get('payments', {}).get('captures', [])]
-            if not captures:
-                raise PayPalError('CAPTURE_NOT_CONFIRMED')
-            capture = captures[0]
-            if capture.get('amount') != {'currency_code': PRODUCT['currency'], 'value': PRODUCT['value']}:
-                raise PayPalError('CAPTURE_AMOUNT_MISMATCH')
-            result = {'orderID': order_id, 'captureID': capture['id'],
-                      'status': capture['status'], 'amount': capture['amount']}
-            order['result'] = result
-            return result
+    @app.get('/api/config')
+    def configuration():
+        token = None
+        if not g.participant:
+            g.participant, token = store.new_participant()
+        response = jsonify(clientID=adapter.client_id, configured=adapter.configured,
+            csrfToken=g.participant['csrf_token'], workshops=store.catalog(), bookings=checkout.list(g.participant['id']))
+        if token:
+            response.set_cookie('workshop_session', token, max_age=30 * 86400, httponly=True,
+                                secure=app.config['COOKIE_SECURE'], samesite='Strict', path='/')
+        return response
 
+    @app.get('/api/bookings')
+    def my_bookings():
+        return jsonify(bookings=checkout.list(g.participant['id']))
 
-class Handler(BaseHTTPRequestHandler):
-    checkout = None
+    @app.get('/api/bookings/<booking_id>')
+    def my_booking(booking_id):
+        return jsonify(checkout.view(g.participant['id'], booking_id))
 
-    def send(self, status, data, content_type='application/json', cookie=None):
-        body = json.dumps(data).encode() if content_type == 'application/json' else data
-        self.send_response(status)
-        self.send_header('Content-Type', content_type)
-        self.send_header('Content-Length', str(len(body)))
-        self.send_header('Cache-Control', 'no-store')
-        self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('Referrer-Policy', 'no-referrer')
-        if cookie:
-            self.send_header('Set-Cookie', f'checkout_session={cookie}; HttpOnly; SameSite=Strict; Path=/')
-        self.end_headers()
-        self.wfile.write(body)
+    @app.post('/api/orders')
+    def create_order():
+        body = request.get_json()
+        if not isinstance(body, dict) or not isinstance(body.get('workshopID'), str):
+            raise CheckoutError('WORKSHOP_REQUIRED', 400)
+        return jsonify(checkout.initiate(g.participant['id'], body['workshopID']))
 
-    def session(self):
-        cookie = self.headers.get('Cookie', '')
-        match = re.search(r'(?:^|;\s*)checkout_session=([a-f0-9]{48})(?:;|$)', cookie)
-        return match.group(1) if match else None
+    @app.post('/api/orders/<order_id>/capture')
+    def capture_order(order_id):
+        return jsonify(checkout.capture(g.participant['id'], order_id))
 
-    def do_GET(self):
-        path = self.path.split('?', 1)[0]
-        if path == '/api/config':
-            session = self.session() or secrets.token_hex(24)
-            self.send(200, {'clientID': self.checkout.paypal.client_id,
-                            'configured': bool(self.checkout.paypal.client_id and self.checkout.paypal.secret),
-                            'product': PRODUCT}, cookie=session)
-        elif path in ('/', '/app.js', '/style.css'):
-            name, content_type = {'/': ('index.html', 'text/html; charset=utf-8'),
-                                  '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
-                                  '/style.css': ('style.css', 'text/css; charset=utf-8')}[path]
-            self.send(200, (ROOT / 'public' / name).read_bytes(), content_type)
-        else:
-            self.send(404, {'error': 'NOT_FOUND'})
+    @app.post('/api/bookings/<booking_id>/reconcile')
+    def reconcile(booking_id):
+        return jsonify(checkout.reconcile(g.participant['id'], booking_id))
 
-    def do_POST(self):
-        # Local-only server; reject cross-origin browser writes and missing sessions.
-        if self.headers.get('Origin') != f'http://{self.headers.get("Host")}' or not self.session():
-            return self.send(403, {'error': 'INVALID_ORIGIN_OR_SESSION'})
-        if not self.checkout.paypal.client_id or not self.checkout.paypal.secret:
-            return self.send(503, {'error': 'CREDENTIALS_MISSING'})
-        try:
-            size = int(self.headers.get('Content-Length', '0'))
-            if size < 0 or size > 4096:
-                return self.send(413, {'error': 'REQUEST_TOO_LARGE'})
-            body = json.loads(self.rfile.read(size) or b'{}')
-            if not isinstance(body, dict):
-                raise ValueError()
-            if self.path == '/api/orders':
-                if body.get('scenario', 'success') not in ('success', 'decline'):
-                    raise ValueError()
-                result = self.checkout.create(self.session(), body.get('scenario') == 'decline')
-                self.send(201, result)
-            elif re.fullmatch(r'/api/orders/[A-Za-z0-9]+/capture', self.path):
-                self.send(200, self.checkout.capture(self.session(), self.path.split('/')[3]))
-            else:
-                self.send(404, {'error': 'NOT_FOUND'})
-        except (ValueError, UnicodeDecodeError):
-            self.send(400, {'error': 'INVALID_REQUEST'})
-        except PayPalError as error:
-            print(f'PayPal issue={error.issue} debug_id={error.debug_id}', flush=True)
-            self.send(error.status, {'error': error.issue, 'debugID': error.debug_id})
-        except Exception:
-            self.send(502, {'error': 'UNEXPECTED_RESPONSE'})
+    @app.post('/api/bookings/<booking_id>/cancel')
+    def cancel(booking_id):
+        return jsonify(checkout.cancel(g.participant['id'], booking_id))
 
+    @app.get('/lessons/<booking_id>')
+    def lesson(booking_id):
+        workshop = checkout.lesson(g.participant['id'], booking_id)
+        content = {
+            'interview': ('Start with a clear question', 'Before writing code, restate the input and expected output. '
+                         'Try a small example, identify edge cases, then explain your approach before implementing it.',
+                         'Practice: explain how you would find the largest number in a list without sorting.'),
+            'web': ('Give your page a structure', 'HTML describes content. CSS controls presentation. Start with '
+                    'a heading, paragraph and button, then add spacing, readable colors and clear focus styles.',
+                    'Practice: sketch a workshop card with a title, date, price and booking button.'),
+        }
+        title, text, exercise = content[workshop['lesson_key']]
+        return make_response(f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(workshop["title"])}</title>'
+            '<link rel="stylesheet" href="/style.css"></head><body><main class="lesson">'
+            f'<p>YOUR PROTECTED SAMPLE LESSON</p><h1>{escape(workshop["title"])}</h1>'
+            f'<h2>{escape(title)}</h2><p>{escape(text)}</p><p>{escape(exercise)}</p>'
+            '<p>Sample content for the Sandbox booking demonstration.</p><a href="/">Back to my bookings</a>'
+            '</main></body></html>')
+
+    return app
 
 if __name__ == '__main__':
     load_env()
-    Handler.checkout = Checkout(PayPal(os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', '')))
-    port = int(os.getenv('PORT', '8000'))
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
-    print(f'Checkout demo: http://localhost:{port} (Sandbox only)', flush=True)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        server.server_close()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('command', nargs='?', choices=['serve', 'migrate'], default='serve')
+    args = parser.parse_args()
+    if args.command == 'migrate':
+        store = Store(os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db'))
+        store.migrate()
+        store.seed()
+        print('Database revision 1 applied; catalog seeded if empty. No database URL displayed.')
+    else:
+        from waitress import serve
+        application = create_app()
+        print('Workshop Sandbox checkout at ' + application.config['APP_ORIGIN'], flush=True)
+        serve(application, host='0.0.0.0' if application.config['APP_ENV'] == 'production' else '127.0.0.1',
+              port=int(os.getenv('PORT', '8000')), threads=4)

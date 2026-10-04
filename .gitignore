@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 .venv/
+instance/
+.env.*
+!.env.example
+.pytest_cache/
+review-artifacts/

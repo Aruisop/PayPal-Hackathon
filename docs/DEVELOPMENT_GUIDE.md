@@ -1,174 +1,37 @@
-# Coworker development guide
+# Workshop Slice 1 development guide
 
-## What has been built
+This guide describes `slice/1-persistent-workshop-checkout`, not the legacy retail demo on `master`. Architecture acceptance is pending. Start with [README](../README.md), [branch map](BRANCHES.md), [review packet](SLICE1_REVIEW.md), and [contributor workflow](../CONTRIBUTING.md). The previous guide, including its uncommitted planning link, is preserved in [history](history/RETAIL_DEVELOPMENT_GUIDE.md).
 
-This is a local PayPal Sandbox checkout demonstration for the fictional Trail Supply product, **Weekend explorer kit**, priced at **$25.00 USD**. It uses Python 3.10+ and the standard library on the server, with plain HTML, CSS, and JavaScript in the browser. There is no Node.js requirement, package installation, database, or frontend build step.
-
-Implemented behavior:
-
-- Create a PayPal order on the server with a fixed price and currency.
-- Open PayPal checkout so a Personal Sandbox buyer can approve the order.
-- Capture the approved order on the server and display a receipt with order ID, capture ID, and status.
-- Show success only when the capture status is `COMPLETED`.
-- Force `INSTRUMENT_DECLINED` at capture using a Sandbox mock header.
-- Handle cancellation and failures, displaying PayPal's debug reference when available.
-- Run a clearly labeled simulation without credentials or PayPal API calls.
-
-This app uses test money and does not ship products. It is not a production payment service.
-
-## Verification status at handoff
-
-During initial development, all **seven automated tests passed**, Sandbox OAuth authentication succeeded, and a real Sandbox order was created through the running app. The developer subsequently reported a payment visible in the user dashboard after switching to a US buyer account.
-
-The automated tests mock PayPal; they do not prove a live Sandbox checkout works. Still confirm the `COMPLETED` receipt and the seller's activity during your own setup. The real forced-decline flow and cancellation should also be manually verified; completion of those checks was not reported at handoff. Automated browser and visual verification was unavailable during development.
-
-## First-time setup
-
-1. Clone the repository and open a terminal in its root.
-2. Check `python --version`; use Python 3.10 or newer.
-3. Copy `.env.example` to `.env` **only if `.env` does not already exist**:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-4. Enter your **Sandbox app's** Client ID and Secret in `.env`. These are not buyer or seller login credentials:
-
-   ```dotenv
-   PAYPAL_CLIENT_ID=your_sandbox_client_id
-   PAYPAL_CLIENT_SECRET=your_sandbox_client_secret
-   PORT=8000
-   ```
-
-5. Save the file and start `python server.py`.
-6. Open `http://localhost:8000`. Use the URL's configured port if you changed `PORT`.
-
-For a UI-only walkthrough, leave both credential fields empty and click **Try simulated checkout**. That button is also available when real Sandbox checkout is configured. A simulated receipt is not evidence of a PayPal transaction.
-
-After changing `.env` or Python code, stop the server with **Ctrl+C** and start it again. Refresh the page after browser code changes. Existing process environment variables take precedence over `.env` because the loader uses `os.environ.setdefault`; check terminal environment settings if a saved change appears ineffective.
-
-## Accounts: which credentials go where?
-
-| Account or credential | Purpose | Where it is used |
-| --- | --- | --- |
-| Real PayPal developer login | Manage Sandbox apps and accounts | Developer Dashboard |
-| Business Sandbox account | Seller receiving test payments | App association and seller activity |
-| Sandbox app Client ID and Secret | Authenticate the server | Local `.env`; Client ID is also public in the browser SDK |
-| Personal Sandbox email and password | Buyer approving test payments | PayPal checkout window or `www.sandbox.paypal.com` |
-
-You do not need to sign in to Sandbox before clicking checkout. The buyer should be distinct from the seller. No account password belongs in `.env` or application code.
-
-### Country pitfall encountered during development
-
-The initial buyer and seller were both **IN (India)**. Credentials authenticated and order creation worked, but the checkout window showed a generic error. Direct Sandbox login also worked. A newly created **US Personal Sandbox buyer** subsequently worked with the existing **IN Business seller**, without changing app credentials.
-
-PayPal states that Indian accounts cannot receive domestic payments and can receive international payments. This makes the India-to-India restriction a likely explanation for the original failure, although the generic popup did not establish the cause. See [PayPal's India payment policy](https://www.paypal.com/in/cshelp/article/can-i-use-paypal-to-receive-payments-from-indian-customers-help1049).
-
-For this demo, use the tested **US buyer → IN seller** pairing. Create the US Personal test account under **Developer Dashboard → Sandbox Accounts → Create Account**. Its country setting describes the test account, not your actual location. Sign out of other Sandbox sessions or use a private window to select the intended buyer.
-
-## How the payment flow works
-
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant Server as Python server
-    participant PayPal as PayPal Sandbox
-    Browser->>Server: GET /api/config
-    Server-->>Browser: Public Client ID, product, session cookie
-    Browser->>Browser: Load PayPal JavaScript SDK
-    Browser->>Server: POST /api/orders with scenario
-    Server->>PayPal: Obtain OAuth token and create CAPTURE order
-    PayPal-->>Server: Order ID
-    Server-->>Browser: Order ID
-    Browser->>PayPal: Buyer signs in and approves
-    Browser->>Server: POST /api/orders/{id}/capture
-    Server->>PayPal: Capture approved order
-    PayPal-->>Server: Capture status and amount
-    Server-->>Browser: Receipt or error with debug reference
-```
-
-**Approval is not capture.** The `onApprove` callback calls our server, which captures the order. Do not display success just because the buyer approved or the popup closed.
+## Code map
 
 | File | Responsibility |
 | --- | --- |
-| `server.py` | Environment loading, OAuth, PayPal API calls, session ownership, price, capture checks, HTTP routes |
-| `public/index.html` | Checkout markup, status region, progress steps, receipt |
-| `public/style.css` | Responsive layout and styling; optional Google Fonts import |
-| `public/app.js` | SDK loading, create/approve/cancel callbacks, API requests, scenario selection, simulation |
-| `tests/test_checkout.py` | Mocked payment behavior and local HTTP tests |
-| `.env.example` | Empty credential template safe to commit |
-| `.gitignore` | Excludes `.env`, Python caches, and virtual environments |
-| `README_setup_guide.md` | Detailed Sandbox account setup reference |
+| `server.py` | Flask routes, persistent participant session issuance, origin/CSRF/ownership enforcement, private lesson response, Waitress and migration CLI |
+| `storage.py` | SQLAlchemy Core revision 1, trusted two-workshop seed, participants, bookings, attempts and entitlements; SQLite/PostgreSQL selection |
+| `checkout.py` | Payment state transitions, operation leases, uniqueness, create/capture/reconcile/cancel, authenticated provider validation and entitlement checks |
+| `payments.py` | Sandbox-only OAuth and Orders/Payments HTTP adapter; request-ID headers and uncertainty-aware errors |
+| `public/` | Plain browser UI and PayPal SDK v5 Buttons callbacks; no frontend framework/build step |
+| `tests/test_workshop_slice.py` | Independent fake-provider state and 26 payment/authorization/persistence regression tests |
+| `requirements.txt`, `.env.example` | Pinned Python dependencies and credential-free environment template |
 
-| Route | Behavior |
-| --- | --- |
-| `GET /api/config` | Sets a session cookie and returns public configuration; never the Secret |
-| `POST /api/orders` | Accepts `scenario: success` or `decline`; price always comes from the server |
-| `POST /api/orders/{id}/capture` | Captures an order belonging to the same browser session |
+## Request path and integration boundaries
 
-Writes require a matching browser `Origin` and session cookie. Direct API tests must first obtain the cookie from `/api/config`, then send both headers. The server binds only to `127.0.0.1`; access from another machine is not supported by this setup.
+Loading `/api/config` issues or resumes a participant cookie, returns its CSRF token, and loads catalog/own bookings. Selecting a workshop creates no entitlement. `POST /api/orders` accepts workshop identity and derives price/currency from the catalog. The service persists the booking, active attempt and request IDs, then calls PayPal outside a database transaction. Orders omit explicit payee routing; the authenticated provider order supplies a persisted seller ID. An optional configured Merchant ID is only an expected-seller validation pin.
 
-## Testing your changes
+The v5 `onApprove` callback requests capture. The backend validates order/booking/merchant/amount/currency, persists operation state, captures or reconciles, and only grants access on a validated `COMPLETED` capture. Private booking/receipt/capture/recheck/cancel/lesson routes require the owning participant. Another participant's order ID or booking URL grants no access.
 
-```powershell
-python -m unittest discover -s tests -v
-```
+Each participant/workshop pair has one booking and one active attempt. Definite declines can preserve history and create a guarded new attempt. Pending or ambiguous outcomes cannot create a replacement purchase. GET polling reads stored status; explicit recheck performs reconciliation. There is no background worker or webhook.
 
-The seven tests cover fixed server pricing, stable capture request IDs after a failure, cached capture responses, session ownership, decline issue/debug reference, the real adapter's mock header, HTTP flow and Secret privacy, origin rejection, and static route restrictions.
+## Local setup and pitfalls
 
-Perform these manual checks with a US Personal buyer:
+Follow the README's virtual environment, dependency install, `.env` and migrate/start commands. Preserve an existing `.env`. Required credentials are the Business Sandbox app Client ID/Secret; buyer credentials belong only in PayPal's browser checkout. Use the exact `APP_ORIGIN`; default is `http://localhost:8000`. Stop an old process before restarting changed code. A restricted execution environment can prevent PayPal network calls; diagnose connectivity without deleting payment state or exposing secrets.
 
-| Scenario | Expected result |
-| --- | --- |
-| Successful payment | Approve checkout; receive a `COMPLETED` receipt; confirm capture in seller activity |
-| Payment method declined | Approve checkout; capture returns a decline message instead of success |
-| Recovery after forced decline | Select Successful payment and start a new checkout; no forced decline |
-| Cancel checkout | Cancellation message and no capture initiated by the cancellation callback |
-| Simulated success/decline | Correct UI outcomes, labeled as simulation, no PayPal transaction |
+SQLite lives in ignored `instance/workshops.db`; no Docker is required. Browser cookies identify participants for 30 days, with no account recovery. Separate ordinary tabs share identity; use different profiles or a fresh private window for isolation tests. Visit the home page first to establish the unpaid session before testing another participant's private URLs.
 
-The decline flag is stored when the order is created. Selecting another scenario does not change an existing order. Forced declines are intentionally not automatically restarted: restarting the same forced scenario would repeat the error.
+Never delete/reset the database to recover an uncertain payment. An expired unapproved order with ambiguous provider evidence remains locked; no replacement recovery is designed here. Seeded schedules are fixed at first initialization. Do not rewrite purchased catalog rows to move a demo date. Future schema changes require new explicit migrations; hosted deployment must use durable managed PostgreSQL as described in [STORAGE_HOSTING](STORAGE_HOSTING.md).
 
-## Troubleshooting
+## Verification and handoff
 
-| Symptom | Check or action |
-| --- | --- |
-| Only simulation is available | Save both app credentials in `.env`, restart the server, refresh the page |
-| Authentication fails | Use Sandbox app credentials, not live keys or account passwords; confirm app association with the seller |
-| Generic PayPal popup error | Check buyer/seller countries and intended buyer session; test direct Sandbox login; try a private window |
-| PayPal buttons do not load | Check Client ID, network access, and browser blockers; simulation can still work |
-| `PAYPAL_UNAVAILABLE` | Check outbound HTTPS access to `api-m.sandbox.paypal.com`; a network failure does not prove credentials are invalid |
-| `ORDER_NOT_FOUND` | Order expired, server restarted, or browser session changed; restart checkout in the same browser |
-| Port already in use | Stop the existing demo or choose a different `PORT`, then restart |
-| Capture failed after approval | Check seller activity before creating another order; a network timeout can leave the payment outcome uncertain |
-| Capture status is not `COMPLETED` | Do not treat it as paid; inspect seller activity and reconcile the outcome |
+Run the unittest suite and dependency check using the README's environment. Automated provider responses are mocked and never require PayPal credentials. Current manual Sandbox completion, buyer lesson access, separate-profile denial and restart persistence are user-observed checks, not independent agent verification. Hosted PostgreSQL and agent-operated browser evidence remain outstanding; see the review report for the exact limits.
 
-The server prints PayPal issue codes and debug IDs. Share those references when debugging, without sharing passwords, Client Secrets, tokens, or full account details. The UI's “Sandbox connected” label means credentials are present, not that account eligibility or authentication has been verified.
-
-## Development pitfalls and boundaries
-
-- **Keep amounts on the server.** `PRODUCT` in `server.py` controls price/currency, while the HTML displays a hard-coded price. Update both and the tests when changing the product. Moving to multiple products needs server-side catalog validation.
-- **Keep the Secret server-side.** Only the public Client ID goes to the SDK. Do not add credentials to JavaScript, documentation, test fixtures, screenshots, or logs.
-- **Order state is in memory.** Restarting loses orders and capture request IDs. Orders expire after one hour; up to 500 unexpired orders are retained. There is no persistent receipt history.
-- **Capture retries have limited protection.** The same stored request ID is reused when capture is retried during the process lifetime. The UI does not automatically retry; create-order calls do not deduplicate separate clicks into one order. Do not assume durable exactly-once processing.
-- **Non-completed capture responses are also cached.** Repeated capture calls return the stored result; this app does not poll for a later status. Add reconciliation before relying on pending outcomes.
-- **Sessions are not authentication.** A session cookie only links a browser to its local order. There are no user accounts or authorization roles. Orders and OAuth calls are serialized by a shared lock, suitable only for this small demo.
-- **Sandbox is fixed in code.** Replacing keys alone does not convert this app into a production integration. There are no webhooks, refunds, subscriptions, tax/shipping calculations, fulfillment, persistent idempotency, or monitoring.
-- **Do not publicly deploy the standard-library server as-is.** Production needs durable order storage, HTTPS, authentication as appropriate, verified webhooks, reconciliation, and a reviewed deployment configuration.
-
-## Git and handoff hygiene
-
-Before committing, run:
-
-```powershell
-git status --short
-git check-ignore .env
-git diff --cached --stat
-```
-
-`.env` should be ignored and absent from staged changes. Never use `git add -f .env`. Each coworker creates their own local file or obtains approved credentials through a private channel. If a Secret is ever published, rotate it; removing it in a later commit does not erase exposure.
-
-The repository's published `master` history was reset to the project's own initial commit. A local `original-history-backup` branch was retained on the original development machine. Do not publish it with `git push --all` or merge it into `master` unless restoring inherited history is intentional.
-
-Useful next development steps are durable order storage and payment reconciliation, then improvements to product configuration and browser testing. Keep those separate from the working Sandbox checkout so failures remain easy to isolate.
-
-Further references: [PayPal standard checkout integration](https://developer.paypal.com/studio/checkout/standard/integrate), [Sandbox accounts](https://developer.paypal.com/sandbox-testing/accounts), and the repository's [setup guide](../README_setup_guide.md).
+SDK v6 migration, groups/preferences/AI, account recovery and payment recovery redesign are separate future tasks. Read [AGENTS](../AGENTS.md) for invariants and [CONTRIBUTING](../CONTRIBUTING.md) for focused branches and PR handoff. Publishing this review branch does not merge or accept Slice 1.
