@@ -8,7 +8,7 @@ These instructions apply to this repository. Explicit user instructions take pre
 2. Read `README.md`, `docs/BRANCHES.md`, `docs/DEVELOPMENT_GUIDE.md`, and `docs/SLICE1_REVIEW.md`.
 3. Follow `CONTRIBUTING.md` for branches, validation and handoff. The branch map distinguishes delivered code, review status and future proposals.
 
-The current delivery is individual workshop checkout. Architecture acceptance is pending. Group/preferences/AI, SDK v6, merchant dashboards and payment recovery redesign are future work, not implemented features or authorization to start them. Documents explicitly marked historical/proposed must not override current code or the Slice 1 report.
+The current delivery is individual workshop checkout. Architecture acceptance is pending. Group/preferences/AI, SDK v6, merchant dashboards and broader payment recovery redesign are future work, not implemented features or authorization to start them. A narrow post-approval recovery path may reconcile a saved `AWAITING_APPROVAL` order and offer its owner the existing capture endpoint; that scope is documented in the Slice 1 review. Documents explicitly marked historical/proposed must not override current code or the Slice 1 report.
 
 ## Payment and identity invariants
 

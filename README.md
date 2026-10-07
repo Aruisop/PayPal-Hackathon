@@ -4,7 +4,7 @@ Branch: `slice/1-persistent-workshop-checkout`. Status: **implemented; external 
 
 A merchant catalog with two scheduled online workshops at **$25.00** and **$18.00 USD**. Each browser profile has its own persistent participant session. A completed, validated PayPal Sandbox capture unlocks only that participant's sample lesson.
 
-This is the first approved workshop slice. Group coordination and AI preferences remain future work. SDK v5 is deliberately retained; v6 migration is separate. Read the [slice review](docs/SLICE1_REVIEW.md) and [durable hosting decision](docs/STORAGE_HOSTING.md). Earlier planning documents are preserved as historical context.
+This is the first workshop slice after Phase 0 approval; Slice 1 architecture acceptance remains pending. It recovers a verified buyer approval after page reload with an owner-only **Complete payment** action. Group coordination and AI preferences remain future work. SDK v5 is deliberately retained; v6 migration is separate. Read the [slice review](docs/SLICE1_REVIEW.md) and [durable hosting decision](docs/STORAGE_HOSTING.md). Earlier planning documents are preserved as historical context.
 
 Requires Python 3.10+. No Node.js or Docker is required.
 

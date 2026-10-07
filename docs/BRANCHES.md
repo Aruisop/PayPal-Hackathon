@@ -5,12 +5,12 @@ Snapshot: 4 October 2026. Check `git branch --show-current`, `git status --short
 | Branch | Delivered scope | Status / evidence |
 | --- | --- | --- |
 | `master` / `origin/master` | Earlier retail Sandbox checkout and startup/account guides, through `5f5c813` | Legacy baseline. Does not contain persistent workshop Slice 1 until a reviewed merge occurs. |
-| `slice/1-persistent-workshop-checkout` | Two scheduled fixed-price USD workshops; participant sessions; durable bookings/attempts; safe create/capture retries; protected lesson; mock tests; storage/review docs; contributor workflow and CI | Implemented review candidate. Architecture acceptance pending. 26 local tests passed; Sandbox completion/access/isolation/restart results are user-observed. See [evidence and limitations](SLICE1_REVIEW.md). |
+| `slice/1-persistent-workshop-checkout` | Two scheduled fixed-price USD workshops; participant sessions; durable bookings/attempts; safe create/capture retries; protected lesson; owner recovery after verified PayPal approval; mock tests; storage/review docs; contributor workflow and CI | Implemented review candidate. Architecture acceptance pending. 30 local tests passed; Sandbox completion/access/isolation/restart results are user-observed. See [evidence and limitations](SLICE1_REVIEW.md). |
 | `original-history-backup` (local only) | Earlier inherited history backup | Not a delivery branch. Do not push, merge or use as the workshop implementation base. |
 
 ## Slice 1 delivery contract
 
-Delivered: individual purchases at $25/$18 USD, SQLite locally, PostgreSQL-compatible versioned schema with durable managed-hosting plan, server-owned pricing, participant ownership checks, completed-capture entitlement validation, stable request IDs, persistent active attempts and explicit reconciliation. SDK v5 and vanilla browser code are retained.
+Delivered: individual purchases at $25/$18 USD, SQLite locally, PostgreSQL-compatible versioned schema with durable managed-hosting plan, server-owned pricing, participant ownership checks, completed-capture entitlement validation, stable request IDs, persistent active attempts and explicit reconciliation. After reload, an `AWAITING_APPROVAL` booking is reconciled with PayPal; its owner can explicitly complete the saved approved order using the existing capture path. SDK v5 and vanilla browser code are retained.
 
 Not delivered: groups/invitations, preference interpretation, recommendations/AI, merchant dashboard, seat caps, background reconciliation/webhooks, account recovery, refunds/revocation, SDK v6, production payments or a hosted PostgreSQL demo. Expired unapproved orders with ambiguous evidence remain locked; a replacement recovery mechanism is not implemented.
 

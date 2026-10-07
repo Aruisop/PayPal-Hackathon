@@ -8,6 +8,7 @@ function setBusy(value) {
   busy = value;
   document.querySelectorAll('[data-workshop]').forEach((button) => { button.disabled = value; });
   $('recheck').disabled = value;
+  $('complete-payment').disabled = value;
 }
 async function api(path, body) {
   const options = {credentials: 'same-origin', cache: 'no-store'};
@@ -58,6 +59,7 @@ function renderStatus() {
   $('lesson').removeAttribute('href');
   if (booking?.lessonURL) $('lesson').href = booking.lessonURL;
   $('recheck').hidden = !booking || !!booking.lessonURL;
+  $('complete-payment').hidden = !booking || booking.attemptState !== 'APPROVED' || !booking.orderID || !!booking.lessonURL;
   if (booking) {
     for (const [id, value] of Object.entries({
       'booking-id': booking.id, 'booking-state': booking.bookingState,
@@ -102,7 +104,8 @@ async function renderCheckout() {
   }
   if (version !== renderVersion) return;
   $('paypal-buttons').replaceChildren();
-  if (!sdkReady || !selectedWorkshop || (selectedBooking && !selectedBooking.canPay)) return;
+  if (!sdkReady || !selectedWorkshop || (selectedBooking &&
+      (!selectedBooking.canPay || selectedBooking.attemptState === 'APPROVED'))) return;
   const workshopID = selectedWorkshop.id;
   let bookingID = selectedBooking?.id;
   const buttons = window.paypal.Buttons({
@@ -164,9 +167,28 @@ $('recheck').addEventListener('click', async () => {
   catch (error) { await recover(error, bookingID); }
   finally { setBusy(false); await renderCheckout(); }
 });
+$('complete-payment').addEventListener('click', async () => {
+  const booking = selectedBooking;
+  if (busy || !booking || booking.attemptState !== 'APPROVED' || !booking.orderID) return;
+  setBusy(true); message('Checking the approved order and completing your payment…');
+  try {
+    const completed = await api(`/api/orders/${encodeURIComponent(booking.orderID)}/capture`, {});
+    saveBooking(completed); renderStatus();
+  } catch (error) { await recover(error, booking.id); }
+  finally { setBusy(false); await renderCheckout(); }
+});
 async function init() {
   try {
     config = await api('/api/config'); config.bookings.forEach(saveBooking); renderBookings();
+    // An SDK onApprove callback may be lost when the buyer returns or reloads.
+    // Recheck only saved, uncompleted orders that still await buyer approval.
+    const interruptedApprovals = config.bookings.filter((booking) =>
+      booking.attemptState === 'AWAITING_APPROVAL' && booking.orderID);
+    await Promise.all(interruptedApprovals.map(async (booking) => {
+      try { saveBooking(await api(`/api/bookings/${encodeURIComponent(booking.id)}/reconcile`, {})); }
+      catch { /* Keep the saved order visible; manual recheck remains available. */ }
+    }));
+    renderBookings();
     $('setup').hidden = config.configured;
     $('mode').textContent = config.configured ? 'Sandbox connected · test money only' : 'Sandbox checkout not configured';
     $('timezone').textContent = `Schedules shown in your browser timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.`;

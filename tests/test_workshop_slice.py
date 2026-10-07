@@ -182,6 +182,88 @@ class WorkshopSliceTests(unittest.TestCase):
         self.assertIsNone(observed['lessonURL'])
         self.assertEqual(self.buyer.get(f'/lessons/{booking["id"]}').status_code, 403)
 
+    def test_reload_reconciles_approval_then_owner_completes_saved_order(self):
+        booking = self.initiate()
+        self.fake.approve(booking['orderID'])
+        # The browser reloads before SDK onApprove can call the capture route.
+        cookie = self.buyer.get_cookie('workshop_session').value
+        with self.app.extensions['store'].engine.connect() as connection:
+            attempt = connection.execute(select(attempts).where(
+                attempts.c.booking_id == booking['id'])).mappings().one()
+            capture_key = attempt['capture_key']
+            self.assertEqual(attempt['state'], 'AWAITING_APPROVAL')
+            self.assertIsNone(attempt['capture_started_at'])
+        self.app.extensions['store'].engine.dispose()
+        self.app = create_app(self.config, paypal=self.fake)
+        self.buyer = self.app.test_client()
+        self.buyer.set_cookie('workshop_session', cookie)
+        restored = self.buyer.get('/api/config').json['bookings'][0]
+        self.assertEqual(restored['attemptState'], 'AWAITING_APPROVAL')
+        self.assertIsNone(restored['lessonURL'])
+
+        # Page restoration reconciles before rendering Complete payment; it must
+        # not capture automatically.
+        restored = self.post(f'/api/bookings/{booking["id"]}/reconcile').json
+        self.assertEqual(restored['attemptState'], 'APPROVED')
+        self.assertEqual(restored['orderID'], booking['orderID'])
+        self.assertFalse(restored['lessonURL'])
+        self.assertEqual(self.fake.capture_calls, 0)
+        with self.app.extensions['store'].engine.connect() as connection:
+            attempt = connection.execute(select(attempts).where(
+                attempts.c.booking_id == booking['id'])).mappings().one()
+            self.assertEqual(attempt['capture_key'], capture_key)
+            self.assertIsNone(attempt['capture_started_at'])
+
+        # The explicit owner action uses the existing order capture endpoint.
+        completed = self.post(f'/api/orders/{booking["orderID"]}/capture').json
+        self.assertEqual(completed['attemptState'], 'COMPLETED')
+        self.assertEqual(completed['bookingState'], 'CONFIRMED')
+        self.assertEqual(completed['lessonURL'], f'/lessons/{booking["id"]}')
+        self.assertEqual(self.fake.create_calls, 1)
+        self.assertEqual(self.fake.capture_calls, 1)
+
+    def test_concurrent_complete_payment_requests_capture_once(self):
+        booking = self.initiate()
+        self.fake.approve(booking['orderID'])
+        self.post(f'/api/bookings/{booking["id"]}/reconcile')
+        cookie = self.buyer.get_cookie('workshop_session').value
+        def complete(_):
+            with self.app.test_client() as client:
+                client.set_cookie('workshop_session', cookie)
+                return client.post(f'/api/orders/{booking["orderID"]}/capture', json={}, headers={
+                    'Origin': 'http://localhost', 'X-CSRF-Token': self.buyer_csrf}).json
+        with ThreadPoolExecutor(max_workers=4) as workers:
+            responses = list(workers.map(complete, range(4)))
+        self.assertEqual(self.fake.capture_calls, 1)
+        participant = self.app.extensions['store'].participant(cookie)
+        final = self.app.extensions['checkout'].view(participant['id'], booking['id'])
+        self.assertEqual(final['attemptState'], 'COMPLETED')
+        self.assertTrue(all(response['id'] == booking['id'] for response in responses))
+
+    def test_other_participant_cannot_complete_approved_booking(self):
+        booking = self.initiate()
+        self.fake.approve(booking['orderID'])
+        self.post(f'/api/bookings/{booking["id"]}/reconcile')
+        response = self.post(f'/api/orders/{booking["orderID"]}/capture', client=self.other,
+                             csrf=self.other_csrf)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.fake.capture_calls, 0)
+        self.assertEqual(self.buyer.get(f'/lessons/{booking["id"]}').status_code, 403)
+
+    def test_owner_complete_action_keeps_pending_capture_locked(self):
+        booking = self.initiate()
+        self.fake.approve(booking['orderID'])
+        approved = self.post(f'/api/bookings/{booking["id"]}/reconcile').json
+        self.assertEqual(approved['attemptState'], 'APPROVED')
+        self.fake.capture_status = 'PENDING'
+        pending = self.post(f'/api/orders/{booking["orderID"]}/capture').json
+        self.assertEqual(pending['attemptState'], 'PENDING')
+        self.assertIsNone(pending['lessonURL'])
+        self.assertEqual(self.buyer.get(f'/lessons/{booking["id"]}').status_code, 403)
+        repeated = self.post(f'/api/orders/{booking["orderID"]}/capture').json
+        self.assertEqual(repeated['attemptState'], 'PENDING')
+        self.assertEqual(self.fake.capture_calls, 1)
+
     def test_completed_capture_unlocks_only_own_lesson_and_receipt(self):
         booking = self.initiate()
         completed = self.capture(booking).json
