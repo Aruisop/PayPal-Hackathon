@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from flask import Flask, g, jsonify, make_response, request, send_from_directory
 from markupsafe import escape
+from ai_planner import AIError
 from checkout import Checkout, CheckoutError
 from collab_booking import BookingError, CollabBooking
 from groups import GroupError, Groups
@@ -82,6 +83,10 @@ def create_app(config=None, paypal=None):
 
     @app.errorhandler(BookingError)
     def booking_error(error):
+        return jsonify(error=error.issue), error.status
+
+    @app.errorhandler(AIError)
+    def ai_error(error):
         return jsonify(error=error.issue), error.status
 
     @app.errorhandler(PayPalError)
@@ -181,6 +186,26 @@ def create_app(config=None, paypal=None):
     @app.post('/api/groups/<group_id>/booking/consent')
     def give_group_consent(group_id):
         return jsonify(booking.give_consent(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/preferences')
+    def submit_group_preference(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict) or not body.get('rawText'):
+            raise BookingError('PREFERENCE_TEXT_REQUIRED', 400)
+        return jsonify(booking.submit_preference(g.participant['id'], group_id, body.get('rawText'),
+                                                 body.get('userTz', 'UTC'), body.get('referenceDate')))
+
+    @app.post('/api/groups/<group_id>/preferences/confirm')
+    def confirm_group_preference(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict) or not isinstance(body.get('confirmedConstraints'), dict):
+            raise BookingError('CONSTRAINTS_REQUIRED', 400)
+        return jsonify(booking.confirm_preference(g.participant['id'], group_id, body.get('confirmedConstraints')))
+
+    @app.get('/api/groups/<group_id>/plan')
+    def get_group_plan(group_id):
+        domain = request.args.get('domain', 'movie')
+        return jsonify(booking.get_group_plan(g.participant['id'], group_id, domain))
 
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):

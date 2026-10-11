@@ -1,13 +1,15 @@
-"""Collaborative booking coordinator for group plans, roster freeze, and exact shares."""
+import json
 import secrets
 import time
 from datetime import datetime, timezone
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
-from storage import (catalog_offers, catalog_resources, group_member_profiles,
-                     group_memberships, identifier, money, purchase_contributions,
-                     shared_purchases, split_equal_cents, workshop_groups)
+from ai_planner import AIError, DeterministicCatalogMatcher, GroupPlanExplainer, PreferenceInterpreter
+from storage import (catalog_offers, catalog_resources, group_member_preferences,
+                     group_member_profiles, group_memberships, identifier, money,
+                     purchase_contributions, shared_purchases, split_equal_cents,
+                     workshop_groups)
 
 
 class BookingError(Exception):
@@ -259,3 +261,174 @@ class CollabBooking:
             if res.rowcount != 1:
                 raise BookingError('CONTRIBUTION_NOT_FOUND', 404)
         return self.view(participant_id, group_id)
+
+    def submit_preference(self, participant_id, group_id, raw_text, user_tz='UTC', reference_date=None):
+        if not isinstance(raw_text, str) or not raw_text.strip():
+            raise BookingError('PREFERENCE_TEXT_REQUIRED', 400)
+        clean_text = raw_text.strip()[:1000]
+
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if active and active['frozen_at']:
+                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
+
+        interpreter = PreferenceInterpreter()
+        interpreted = interpreter.interpret(clean_text, user_tz=user_tz, reference_date=reference_date)
+
+        now = time.time()
+        with self.store.engine.begin() as connection:
+            active = self._get_active_purchase(connection, group_id)
+            if active and active['frozen_at']:
+                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
+
+            existing = connection.execute(select(group_member_preferences.c.id).where(
+                group_member_preferences.c.group_id == group_id,
+                group_member_preferences.c.participant_id == participant_id)).scalar()
+
+            if existing:
+                connection.execute(update(group_member_preferences).where(
+                    group_member_preferences.c.id == existing).values(
+                    raw_text=clean_text,
+                    interpreted_json=json.dumps(interpreted),
+                    confirmed_constraints_json=None,
+                    is_confirmed=0,
+                    updated_at=now
+                ))
+            else:
+                connection.execute(insert(group_member_preferences).values(
+                    id=identifier(),
+                    group_id=group_id,
+                    participant_id=participant_id,
+                    raw_text=clean_text,
+                    interpreted_json=json.dumps(interpreted),
+                    confirmed_constraints_json=None,
+                    is_confirmed=0,
+                    updated_at=now
+                ))
+
+        return {
+            'groupID': group_id,
+            'participantID': participant_id,
+            'status': 'INTERPRETED',
+            'isConfirmed': False,
+            'interpretation': interpreted
+        }
+
+    def confirm_preference(self, participant_id, group_id, confirmed_constraints):
+        if not isinstance(confirmed_constraints, dict):
+            raise BookingError('CONSTRAINTS_REQUIRED', 400)
+
+        with self.store.engine.begin() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if active and active['frozen_at']:
+                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
+
+            pref = connection.execute(select(group_member_preferences).where(
+                group_member_preferences.c.group_id == group_id,
+                group_member_preferences.c.participant_id == participant_id)).mappings().first()
+            if not pref:
+                raise BookingError('PREFERENCE_NOT_FOUND', 404)
+
+            now = time.time()
+            connection.execute(update(group_member_preferences).where(
+                group_member_preferences.c.id == pref['id']).values(
+                confirmed_constraints_json=json.dumps(confirmed_constraints),
+                is_confirmed=1,
+                updated_at=now
+            ))
+
+        return {
+            'groupID': group_id,
+            'participantID': participant_id,
+            'status': 'CONFIRMED',
+            'isConfirmed': True,
+            'confirmedConstraints': confirmed_constraints
+        }
+
+    def get_group_plan(self, participant_id, group_id, domain='movie'):
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+
+            members = connection.execute(select(group_memberships.c.participant_id).where(
+                group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).scalars().all()
+            if len(members) < 2 or len(members) > 4:
+                raise BookingError('GROUP_SIZE_UNSUPPORTED', 400)
+
+            profiles = dict(connection.execute(select(
+                group_member_profiles.c.participant_id, group_member_profiles.c.alias).where(
+                group_member_profiles.c.group_id == group_id)).all())
+
+            # Load preferences
+            prefs = connection.execute(select(group_member_preferences).where(
+                group_member_preferences.c.group_id == group_id)).mappings().all()
+            pref_by_pid = {p['participant_id']: p for p in prefs}
+
+            member_constraints = []
+            unconfirmed_members = []
+            for i, pid in enumerate(members):
+                alias = profiles.get(pid, f'Member {i + 1}')
+                p = pref_by_pid.get(pid)
+                if p and p['is_confirmed'] and p['confirmed_constraints_json']:
+                    c = json.loads(p['confirmed_constraints_json'])
+                    c['participant_id'] = pid
+                    c['alias'] = alias
+                    c['is_confirmed'] = True
+                    member_constraints.append(c)
+                else:
+                    unconfirmed_members.append(alias)
+                    tentative = json.loads(p['interpreted_json']) if p else {}
+                    tentative['participant_id'] = pid
+                    tentative['alias'] = alias
+                    tentative['is_confirmed'] = False
+                    member_constraints.append(tentative)
+
+            # Query catalog offers for this domain
+            raw_offers = connection.execute(select(catalog_offers).where(
+                catalog_offers.c.domain == domain)).mappings().all()
+
+            offers = []
+            for ro in raw_offers:
+                res_rows = connection.execute(select(catalog_resources).where(
+                    catalog_resources.c.offer_id == ro['id']).order_by(
+                    catalog_resources.c.label)).mappings().all()
+                resources = [dict(id=r['id'], label=r['label'], state=r['state']) for r in res_rows]
+                meta = json.loads(ro['meta_json']) if ro.get('meta_json') else {}
+                offers.append(dict(
+                    id=ro['id'],
+                    domain=ro['domain'],
+                    title=ro['title'],
+                    merchantID=ro['merchant_id'],
+                    scheduleTime=ro['schedule_time'],
+                    priceMinor=ro['price_minor'],
+                    value=money(ro['price_minor']),
+                    currency=ro['currency'],
+                    meta=meta,
+                    resources=resources
+                ))
+
+            matcher = DeterministicCatalogMatcher()
+            matched_res = matcher.match(member_constraints, offers, group_size=len(members))
+            explainer = GroupPlanExplainer()
+            explanation = explainer.explain(matched_res['matches'], matched_res['conflicts'], member_constraints)
+
+            return {
+                'groupID': group_id,
+                'domain': domain,
+                'groupSize': len(members),
+                'memberCount': len(members),
+                'confirmedCount': len(members) - len(unconfirmed_members),
+                'unconfirmedMembers': unconfirmed_members,
+                'allConfirmed': len(unconfirmed_members) == 0,
+                'matches': matched_res['matches'],
+                'conflicts': matched_res['conflicts'],
+                'explanation': explanation
+            }
+

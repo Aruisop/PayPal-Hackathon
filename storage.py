@@ -85,6 +85,17 @@ group_member_profiles = Table('group_member_profiles', metadata,
     Column('updated_at', Float, nullable=False),
     UniqueConstraint('group_id', 'participant_id', name='uq_group_profile_participant'))
 
+group_member_preferences = Table('group_member_preferences', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('group_id', ForeignKey('workshop_groups.id'), nullable=False),
+    Column('participant_id', ForeignKey('participants.id'), nullable=False),
+    Column('raw_text', String(1000), nullable=False),
+    Column('interpreted_json', String(2000), nullable=False),
+    Column('confirmed_constraints_json', String(2000)),
+    Column('is_confirmed', Integer, nullable=False, default=0),
+    Column('updated_at', Float, nullable=False),
+    UniqueConstraint('group_id', 'participant_id', name='uq_group_pref_participant'))
+
 shared_purchases = Table('shared_purchases', metadata,
     Column('id', String(40), primary_key=True),
     Column('group_id', ForeignKey('workshop_groups.id'), nullable=False),
@@ -176,6 +187,7 @@ class Store:
                     catalog_offers.create(connection, checkfirst=True)
                     catalog_resources.create(connection, checkfirst=True)
                     group_member_profiles.create(connection, checkfirst=True)
+                    group_member_preferences.create(connection, checkfirst=True)
                     shared_purchases.create(connection, checkfirst=True)
                     purchase_contributions.create(connection, checkfirst=True)
                     revision = 3
