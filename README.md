@@ -1,6 +1,6 @@
 # GroupPay · Collaborative Booking & Equal Payments
 
-Branch: `slice/3-collaborative-booking-phase1`. Status: **Implemented & Validated**.
+Branch: `slice/3-collaborative-booking-and-equal-payments`. Status: **Implemented & Validated**.
 For full hackathon judge evaluation details, architecture diagrams, and novelty analysis, see [HACKATHON_SHOWCASE.md](HACKATHON_SHOWCASE.md) and [COLLABORATIVE_BOOKING_PRD.md](docs/COLLABORATIVE_BOOKING_PRD.md).
 
 > **Product Promise:** Book together without making one friend become the bank.
