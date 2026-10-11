@@ -121,6 +121,10 @@ purchase_contributions = Table('purchase_contributions', metadata,
     Column('order_id', String(40)),
     Column('authorization_id', String(40)),
     Column('capture_id', String(40)),
+    Column('create_request_id', String(64)),
+    Column('authorize_request_id', String(64)),
+    Column('void_request_id', String(64)),
+    Column('capture_request_id', String(64)),
     Column('created_at', Float, nullable=False),
     UniqueConstraint('purchase_id', 'participant_id', name='uq_purchase_participant'))
 

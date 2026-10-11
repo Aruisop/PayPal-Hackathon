@@ -123,3 +123,29 @@ class PayPal:
 
     def get_capture(self, capture_id):
         return self._authorized('GET', f'/v2/payments/captures/{self._identifier(capture_id)}')
+
+    def authorize_order(self, order_id, request_id):
+        return self._authorized('POST',
+                                f'/v2/checkout/orders/{self._identifier(order_id)}/authorize',
+                                {}, request_id)
+
+    def get_authorization(self, authorization_id):
+        return self._authorized('GET', f'/v2/payments/authorizations/{self._identifier(authorization_id)}')
+
+    def void_authorization(self, authorization_id, request_id):
+        return self._authorized('POST',
+                                f'/v2/payments/authorizations/{self._identifier(authorization_id)}/void',
+                                {}, request_id)
+
+    def capture_authorization(self, authorization_id, payload, request_id):
+        return self._authorized('POST',
+                                f'/v2/payments/authorizations/{self._identifier(authorization_id)}/capture',
+                                payload or {}, request_id)
+
+    def refund_capture(self, capture_id, payload, request_id):
+        return self._authorized('POST',
+                                f'/v2/payments/captures/{self._identifier(capture_id)}/refund',
+                                payload or {}, request_id)
+
+    def get_refund(self, refund_id):
+        return self._authorized('GET', f'/v2/payments/refunds/{self._identifier(refund_id)}')

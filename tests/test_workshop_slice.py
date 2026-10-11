@@ -92,6 +92,50 @@ class FakePayPal:
                     return result
         raise PayPalError('RESOURCE_NOT_FOUND', provider_status=404)
 
+    def authorize_order(self, order_id, request_id):
+        with self.lock:
+            self.authorize_calls = getattr(self, 'authorize_calls', 0) + 1
+            if getattr(self, 'fail_authorize', False):
+                raise PayPalError('PAYPAL_UNAVAILABLE')
+            order = self.orders[order_id]
+            if not hasattr(self, 'auth_keys'):
+                self.auth_keys = {}
+            if not hasattr(self, 'authorizations'):
+                self.authorizations = {}
+            if request_id not in self.auth_keys:
+                auth_id = f'AUTH{len(self.authorizations) + 1}'
+                auth = dict(id=auth_id, status='CREATED',
+                            amount=copy.deepcopy(order['purchase_units'][0]['amount']))
+                self.authorizations[auth_id] = auth
+                self.auth_keys[request_id] = auth_id
+                order['purchase_units'][0]['payments'] = {'authorizations': [auth]}
+                order['status'] = 'COMPLETED'
+            else:
+                auth_id = self.auth_keys[request_id]
+                auth = self.authorizations[auth_id]
+            if getattr(self, 'lose_authorize_response', False):
+                raise PayPalError('PAYPAL_UNAVAILABLE')
+            return dict(id=order_id, status=order['status'], purchase_units=[{
+                'payments': {'authorizations': [auth]}
+            }])
+
+    def get_authorization(self, authorization_id):
+        with self.lock:
+            if not hasattr(self, 'authorizations'):
+                self.authorizations = {}
+            if authorization_id in self.authorizations:
+                return copy.deepcopy(self.authorizations[authorization_id])
+            raise PayPalError('RESOURCE_NOT_FOUND', provider_status=404)
+
+    def void_authorization(self, authorization_id, request_id):
+        with self.lock:
+            self.void_calls = getattr(self, 'void_calls', 0) + 1
+            if not hasattr(self, 'authorizations'):
+                self.authorizations = {}
+            if authorization_id in self.authorizations:
+                self.authorizations[authorization_id]['status'] = 'VOIDED'
+            return dict(id=authorization_id, status='VOIDED')
+
 
 class WorkshopSliceTests(unittest.TestCase):
     def setUp(self):

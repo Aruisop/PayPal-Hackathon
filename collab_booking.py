@@ -18,9 +18,10 @@ class BookingError(Exception):
 
 
 class CollabBooking:
-    def __init__(self, store, origin):
+    def __init__(self, store, origin, paypal=None):
         self.store = store
         self.origin = origin
+        self.paypal = paypal
 
     def _member_group(self, connection, participant_id, group_id):
         return connection.execute(select(workshop_groups).join(
@@ -222,6 +223,8 @@ class CollabBooking:
                         shareValue=money(c['share_cents']),
                         assignedResource=res_label,
                         state=c['state'],
+                        orderID=c['order_id'],
+                        authorizationID=c['authorization_id'],
                         consentGiven=bool(c['consent_given_at'])
                     )
 
@@ -431,4 +434,220 @@ class CollabBooking:
                 'conflicts': matched_res['conflicts'],
                 'explanation': explanation
             }
+
+    def initiate_contribution_order(self, participant_id, group_id):
+        if not self.paypal:
+            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
+
+        now = time.time()
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if not active or active['state'] != 'AWAITING_AUTHORIZATIONS':
+                raise BookingError('NO_ACTIVE_BOOKING', 400)
+            if now > active['hold_deadline']:
+                raise BookingError('HOLD_DEADLINE_EXPIRED', 409)
+
+            contrib = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'],
+                purchase_contributions.c.participant_id == participant_id)).mappings().first()
+            if not contrib:
+                raise BookingError('CONTRIBUTION_NOT_FOUND', 404)
+            if not contrib['consent_given_at']:
+                raise BookingError('CONSENT_REQUIRED', 400)
+
+            if contrib['order_id'] and contrib['state'] == 'AWAITING_APPROVAL':
+                return {
+                    'orderID': contrib['order_id'],
+                    'shareCents': contrib['share_cents'],
+                    'shareValue': money(contrib['share_cents']),
+                    'currency': active['currency'],
+                    'holdDeadline': active['hold_deadline']
+                }
+
+            offer = connection.execute(select(catalog_offers).where(
+                catalog_offers.c.id == active['offer_id'])).mappings().first()
+
+            create_request_id = contrib['create_request_id'] or f'collab-ord-{contrib["id"]}'
+
+        # Persist create_request_id before network call
+        with self.store.engine.begin() as connection:
+            connection.execute(update(purchase_contributions).where(
+                purchase_contributions.c.id == contrib['id']).values(
+                create_request_id=create_request_id))
+
+        # NO DB transaction held across PayPal call
+        payload = {
+            'intent': 'AUTHORIZE',
+            'purchase_units': [{
+                'reference_id': contrib['id'],
+                'description': f"Group share for {offer['title']}",
+                'custom_id': contrib['id'],
+                'amount': {
+                    'currency_code': offer['currency'],
+                    'value': money(contrib['share_cents'])
+                }
+            }]
+        }
+        if offer.get('merchant_id'):
+            payload['purchase_units'][0]['payee'] = {'merchant_id': offer['merchant_id']}
+
+        order = self.paypal.create_order(payload, create_request_id)
+        order_id = order['id']
+
+        # Persist order_id and transition state to AWAITING_APPROVAL
+        with self.store.engine.begin() as connection:
+            connection.execute(update(purchase_contributions).where(
+                purchase_contributions.c.id == contrib['id']).values(
+                order_id=order_id, state='AWAITING_APPROVAL'))
+
+        return {
+            'orderID': order_id,
+            'shareCents': contrib['share_cents'],
+            'shareValue': money(contrib['share_cents']),
+            'currency': offer['currency'],
+            'holdDeadline': active['hold_deadline']
+        }
+
+    def authorize_contribution(self, participant_id, group_id):
+        if not self.paypal:
+            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
+
+        now = time.time()
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if not active or active['state'] != 'AWAITING_AUTHORIZATIONS':
+                raise BookingError('NO_ACTIVE_BOOKING', 400)
+            if now > active['hold_deadline']:
+                raise BookingError('HOLD_DEADLINE_EXPIRED', 409)
+
+            contrib = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'],
+                purchase_contributions.c.participant_id == participant_id)).mappings().first()
+            if not contrib:
+                raise BookingError('CONTRIBUTION_NOT_FOUND', 404)
+            if not contrib['order_id']:
+                raise BookingError('ORDER_NOT_INITIATED', 400)
+
+            if contrib['state'] == 'AUTHORIZED' and contrib['authorization_id']:
+                return self.view(participant_id, group_id)
+
+            auth_request_id = contrib['authorize_request_id'] or f'collab-auth-{contrib["id"]}'
+
+        # Persist authorize_request_id before network call
+        with self.store.engine.begin() as connection:
+            connection.execute(update(purchase_contributions).where(
+                purchase_contributions.c.id == contrib['id']).values(
+                authorize_request_id=auth_request_id))
+
+        # NO DB transaction held across PayPal call
+        auth_resp = self.paypal.authorize_order(contrib['order_id'], auth_request_id)
+
+        try:
+            pu = auth_resp.get('purchase_units', [{}])[0]
+            authorizations = pu.get('payments', {}).get('authorizations', [])
+            auth_id = authorizations[0]['id']
+        except (KeyError, IndexError, TypeError):
+            auth_id = auth_resp.get('id')
+
+        if not auth_id:
+            raise BookingError('AUTHORIZATION_FAILED', 502)
+
+        # Update state in DB and check if all members are authorized
+        with self.store.engine.begin() as connection:
+            connection.execute(update(purchase_contributions).where(
+                purchase_contributions.c.id == contrib['id']).values(
+                authorization_id=auth_id, state='AUTHORIZED'))
+
+            all_contribs = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
+
+            if all(c['state'] == 'AUTHORIZED' for c in all_contribs):
+                connection.execute(update(shared_purchases).where(
+                    shared_purchases.c.id == active['id']).values(state='FINALIZING'))
+
+        return self.view(participant_id, group_id)
+
+    def reconcile_contribution(self, participant_id, group_id):
+        if not self.paypal:
+            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
+
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if not active:
+                raise BookingError('NO_ACTIVE_BOOKING', 400)
+            contrib = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'],
+                purchase_contributions.c.participant_id == participant_id)).mappings().first()
+            if not contrib or not contrib['order_id']:
+                raise BookingError('ORDER_NOT_INITIATED', 400)
+
+        # Reconcile order outside DB transaction
+        order = self.paypal.get_order(contrib['order_id'])
+        pu = order.get('purchase_units', [{}])[0]
+        authorizations = pu.get('payments', {}).get('authorizations', [])
+
+        if authorizations:
+            auth_id = authorizations[0]['id']
+            with self.store.engine.begin() as connection:
+                connection.execute(update(purchase_contributions).where(
+                    purchase_contributions.c.id == contrib['id']).values(
+                    authorization_id=auth_id, state='AUTHORIZED'))
+                all_contribs = connection.execute(select(purchase_contributions).where(
+                    purchase_contributions.c.purchase_id == active['id'])).mappings().all()
+                if all(c['state'] == 'AUTHORIZED' for c in all_contribs):
+                    connection.execute(update(shared_purchases).where(
+                        shared_purchases.c.id == active['id']).values(state='FINALIZING'))
+
+        return self.view(participant_id, group_id)
+
+    def void_booking(self, participant_id, group_id):
+        if not self.paypal:
+            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
+
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if not active:
+                raise BookingError('NO_ACTIVE_BOOKING', 400)
+            contribs = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
+
+        # Void any authorized contributions outside DB transaction
+        for c in contribs:
+            if c['authorization_id'] and c['state'] == 'AUTHORIZED':
+                void_req_id = c['void_request_id'] or f'collab-void-{c["id"]}'
+                with self.store.engine.begin() as connection:
+                    connection.execute(update(purchase_contributions).where(
+                        purchase_contributions.c.id == c['id']).values(void_request_id=void_req_id))
+                try:
+                    self.paypal.void_authorization(c['authorization_id'], void_req_id)
+                except Exception:
+                    pass
+
+        # Release inventory and mark cancelled/voided
+        with self.store.engine.begin() as connection:
+            for c in contribs:
+                if c['state'] in ('AUTHORIZED', 'AWAITING_APPROVAL', 'ACCEPTED', 'PENDING_CONSENT'):
+                    connection.execute(update(purchase_contributions).where(
+                        purchase_contributions.c.id == c['id']).values(state='VOIDED'))
+
+            connection.execute(update(catalog_resources).where(
+                catalog_resources.c.held_by_purchase_id == active['id']).values(
+                state='FREE', held_by_purchase_id=None, held_until=None))
+
+            connection.execute(update(shared_purchases).where(
+                shared_purchases.c.id == active['id']).values(state='CANCELLED'))
+
+        return dict(groupID=group_id, purchaseID=active['id'], state='CANCELLED', hasBooking=False)
 

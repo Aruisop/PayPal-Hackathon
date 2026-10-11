@@ -49,7 +49,7 @@ def create_app(config=None, paypal=None):
                                os.getenv('PAYPAL_MERCHANT_ID', ''))
     checkout = Checkout(store, adapter)
     groups = Groups(store, checkout, app.config['APP_ORIGIN'])
-    booking = CollabBooking(store, app.config['APP_ORIGIN'])
+    booking = CollabBooking(store, app.config['APP_ORIGIN'], adapter)
     app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter, booking=booking)
 
     @app.before_request
@@ -206,6 +206,22 @@ def create_app(config=None, paypal=None):
     def get_group_plan(group_id):
         domain = request.args.get('domain', 'movie')
         return jsonify(booking.get_group_plan(g.participant['id'], group_id, domain))
+
+    @app.post('/api/groups/<group_id>/contributions/order')
+    def initiate_group_contribution_order(group_id):
+        return jsonify(booking.initiate_contribution_order(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/contributions/authorize')
+    def authorize_group_contribution(group_id):
+        return jsonify(booking.authorize_contribution(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/contributions/reconcile')
+    def reconcile_group_contribution(group_id):
+        return jsonify(booking.reconcile_contribution(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/booking/void')
+    def void_group_booking(group_id):
+        return jsonify(booking.void_booking(g.participant['id'], group_id))
 
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):
