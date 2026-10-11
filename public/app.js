@@ -214,7 +214,7 @@ function setupCollabRoom() {
     if (!text) return;
     input.value = '';
 
-    appendUserChatMessage('Alice (Organizer)', '👩', text);
+    appendUserChatMessage('Alice (Lead)', '<span class="avatar-mono">AL</span>', text);
     handleChatMessage(text);
   });
 
@@ -295,7 +295,7 @@ function switchRoomDomain(domain) {
         <div class="quote-card-header">
           <div>
             <strong>Cosmic Odyssey: Remastered</strong>
-            <span class="fine">Friday Oct 16 · 7:30 PM · Screen 1</span>
+            <span class="fine">Friday Oct 16 · 19:30 · Screen 1</span>
           </div>
           <div class="quote-pricing">
             <span class="fine">Total: $48.00 USD</span>
@@ -304,9 +304,9 @@ function switchRoomDomain(domain) {
         </div>
         <div class="quote-card-actions">
           <button id="in-chat-authorize-btn" type="button" class="btn btn-primary btn-sm">
-            ⚡ Authorize $16.00 with PayPal Sandbox
+            Authorize $16.00 with PayPal Sandbox
           </button>
-          <span class="fine" id="in-chat-auth-status">Held on card · Charged only when 100% consent</span>
+          <span class="fine" id="in-chat-auth-status">Card authorization hold · Captured only on full roster consent</span>
         </div>
       `;
     }
@@ -317,7 +317,7 @@ function switchRoomDomain(domain) {
         <div class="quote-card-header">
           <div>
             <strong>Emerald Cove Kayak Tour</strong>
-            <span class="fine">Saturday Oct 17 · 9:00 AM · Harbor Launch</span>
+            <span class="fine">Saturday Oct 17 · 09:00 · Harbor Launch</span>
           </div>
           <div class="quote-pricing">
             <span class="fine">Total: $100.00 USD</span>
@@ -326,7 +326,7 @@ function switchRoomDomain(domain) {
         </div>
         <div class="quote-card-actions">
           <button id="in-chat-authorize-btn" type="button" class="btn btn-primary btn-sm">
-            ⚡ Authorize $33.34 with PayPal Sandbox
+            Authorize $33.34 with PayPal Sandbox
           </button>
           <span class="fine" id="in-chat-auth-status">Remainder cent math allocated in roster order</span>
         </div>
@@ -339,7 +339,7 @@ function switchRoomDomain(domain) {
   });
 
   appendBotChatMessage(
-    `Switched category to <strong>${domain === 'movie' ? 'Cinemas' : 'Excursions'}</strong>. Catalog offers refreshed. Group constraints aligned!`
+    `Switched category to <strong>${domain === 'movie' ? 'Cinemas' : 'Excursions'}</strong>. Catalog offers refreshed. Group constraints aligned.`
   );
 }
 
@@ -349,7 +349,7 @@ function appendUserChatMessage(sender, avatar, text) {
   const msg = document.createElement('div');
   msg.className = 'chat-msg msg-friend';
   msg.innerHTML = `
-    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-avatar avatar-al">${avatar}</div>
     <div class="msg-content">
       <span class="msg-sender">${escapeHtml(sender)}</span>
       <p class="msg-text">${escapeHtml(text)}</p>
@@ -365,11 +365,13 @@ function appendBotChatMessage(htmlContent) {
   const msg = document.createElement('div');
   msg.className = 'chat-msg msg-bot';
   msg.innerHTML = `
-    <div class="msg-avatar bot-avatar">🤖</div>
+    <div class="msg-avatar bot-avatar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>
+    </div>
     <div class="msg-content bot-content">
       <div class="bot-header">
         <span class="msg-sender">PayPal Concierge · Gemini 2.5 Flash</span>
-        <span class="badge badge-success">✓ 12/12 GATES PASS</span>
+        <span class="badge badge-success">GATES VERIFIED (12/12)</span>
       </div>
       <div class="msg-text">${htmlContent}</div>
     </div>
@@ -385,7 +387,7 @@ function handleChatMessage(rawText) {
   setTimeout(() => {
     if (isAttack) {
       appendBotChatMessage(`
-        <span style="color:#f87171; font-weight:700;">🛡️ Adversarial Injection Blocked!</span><br>
+        <span style="color:#f87171; font-weight:700;">Adversarial Injection Intercepted</span><br>
         Safety Gate 1 neutralized untrusted prompt payload.
         <br><br>
         <strong>Strict Invariants Enforced:</strong> Catalog prices ($USD) and inventory availability are immutable server-owned assets. Client instructions cannot manipulate price or grant free tickets.
@@ -393,9 +395,9 @@ function handleChatMessage(rawText) {
       setCollabStatus('Adversarial prompt injection neutralized by AI Safety Gate 1.');
     } else {
       appendBotChatMessage(`
-        ✨ <strong>Preference Evaluated:</strong> "${escapeHtml(rawText)}"
+        <strong>Preference Evaluated:</strong> "${escapeHtml(rawText)}"
         <br>
-        All 12 safety gates verified. Budget and schedule constraints reconciled across Alice, Bob, and Charlie. Seats and pricing locked for group checkout!
+        All 12 safety gates verified. Budget and schedule constraints reconciled across Alice, Bob, and Charlie. Seats and pricing locked for group checkout.
       `);
       setCollabStatus('Preferences interpreted and matched against catalog.');
     }
@@ -408,12 +410,12 @@ function handleAliceAuthorization() {
   if (btn) {
     btn.disabled = true;
     btn.className = 'btn btn-accent btn-sm';
-    btn.textContent = '✓ Authorized with PayPal Sandbox';
+    btn.textContent = 'Authorized with PayPal Sandbox';
   }
   if (status) {
     status.textContent = 'Held on Alice\'s card · Waiting for Bob and Charlie';
   }
-  setCollabStatus('Alice (Organizer) approved PayPal Sandbox authorization hold.');
+  setCollabStatus('Alice (Lead) approved PayPal Sandbox authorization hold.');
 }
 
 // -------------------------------------------------------------
@@ -455,9 +457,9 @@ async function runShowcaseDemo(scenario, domain) {
       if (seatMap) {
         if (domain === 'movie') {
           seatMap.innerHTML = `
-            <button type="button" class="seat-button occupied my-seat" data-seat="A1"><span>A1</span><small>👩 Alice</small></button>
-            <button type="button" class="seat-button occupied friend-seat" data-seat="A2"><span>A2</span><small>👨 Bob</small></button>
-            <button type="button" class="seat-button occupied friend-seat" data-seat="A3"><span>A3</span><small>🧑 Charlie</small></button>
+            <button type="button" class="seat-button occupied my-seat" data-seat="A1"><span>A1</span><small>Alice</small></button>
+            <button type="button" class="seat-button occupied friend-seat" data-seat="A2"><span>A2</span><small>Bob</small></button>
+            <button type="button" class="seat-button occupied friend-seat" data-seat="A3"><span>A3</span><small>Charlie</small></button>
             <button type="button" class="seat-button" data-seat="A4">A4</button>
             <button type="button" class="seat-button" data-seat="A5">A5</button>
             <button type="button" class="seat-button" data-seat="A6">A6</button>
@@ -474,9 +476,9 @@ async function runShowcaseDemo(scenario, domain) {
           `;
         } else {
           seatMap.innerHTML = `
-            <button type="button" class="seat-button occupied my-seat" data-seat="Kayak 1"><span>Kayak 1</span><small>👩 Alice</small></button>
-            <button type="button" class="seat-button occupied friend-seat" data-seat="Kayak 2"><span>Kayak 2</span><small>👨 Bob</small></button>
-            <button type="button" class="seat-button occupied friend-seat" data-seat="Kayak 3"><span>Kayak 3</span><small>🧑 Charlie</small></button>
+            <button type="button" class="seat-button occupied my-seat" data-seat="Kayak 1"><span>Kayak 1</span><small>Alice</small></button>
+            <button type="button" class="seat-button occupied friend-seat" data-seat="Kayak 2"><span>Kayak 2</span><small>Bob</small></button>
+            <button type="button" class="seat-button occupied friend-seat" data-seat="Kayak 3"><span>Kayak 3</span><small>Charlie</small></button>
             <button type="button" class="seat-button" data-seat="Kayak 4">Kayak 4</button>
             <button type="button" class="seat-button" data-seat="Kayak 5">Kayak 5</button>
             <button type="button" class="seat-button" data-seat="Kayak 6">Kayak 6</button>
@@ -490,7 +492,7 @@ async function runShowcaseDemo(scenario, domain) {
         authList.innerHTML = result.tickets.map((t) => `
           <div class="member-auth-row authorized">
             <div class="row-member-info">
-              <span class="row-avatar">${t.alias.includes('Alice') ? '👩' : t.alias.includes('Bob') ? '👨' : '🧑'}</span>
+              <span class="row-avatar-mono">${t.alias.includes('Alice') ? 'AL' : t.alias.includes('Bob') ? 'BO' : 'CH'}</span>
               <div>
                 <strong>${t.alias}</strong>
                 <span class="fine">${t.assignedResource} · PayPal Sandbox Hold</span>
@@ -498,7 +500,7 @@ async function runShowcaseDemo(scenario, domain) {
             </div>
             <div class="row-member-status">
               <span class="mono-amount">$${t.shareValue} USD</span>
-              <span class="badge badge-success">✓ AUTHORIZED</span>
+              <span class="badge badge-success">AUTHORIZED</span>
             </div>
           </div>
         `).join('');
@@ -538,7 +540,7 @@ async function runShowcaseDemo(scenario, domain) {
 
       // Concierge Chat Celebration
       appendBotChatMessage(`
-        🎉 <strong>All 3 Authorizations Captured!</strong><br>
+        <strong>All 3 Authorizations Captured</strong><br>
         Sequential capture completed with zero single-buyer exposure.
         Individual passes issued for <strong>Alice (${result.tickets[0]?.assignedResource})</strong>,
         <strong>Bob (${result.tickets[1]?.assignedResource})</strong>, and
@@ -556,9 +558,9 @@ async function runShowcaseDemo(scenario, domain) {
         authList.innerHTML = `
           <div class="member-auth-row" style="border-color:rgba(245,158,11,0.5); background:rgba(245,158,11,0.06);">
             <div class="row-member-info">
-              <span class="row-avatar">👩</span>
+              <span class="row-avatar-mono">AL</span>
               <div>
-                <strong>Alice (Organizer)</strong>
+                <strong>Alice (Lead)</strong>
                 <span class="fine">Seat A1 · Auto-Refunded Capture</span>
               </div>
             </div>
@@ -569,7 +571,7 @@ async function runShowcaseDemo(scenario, domain) {
           </div>
           <div class="member-auth-row" style="border-color:rgba(245,158,11,0.5); background:rgba(245,158,11,0.06);">
             <div class="row-member-info">
-              <span class="row-avatar">👨</span>
+              <span class="row-avatar-mono">BO</span>
               <div>
                 <strong>Bob</strong>
                 <span class="fine">Seat A2 · Auto-Refunded Capture</span>
@@ -582,7 +584,7 @@ async function runShowcaseDemo(scenario, domain) {
           </div>
           <div class="member-auth-row declined">
             <div class="row-member-info">
-              <span class="row-avatar">🧑</span>
+              <span class="row-avatar-mono">CH</span>
               <div>
                 <strong>Charlie</strong>
                 <span class="fine">Seat A3 · Simulated 422 Decline</span>
@@ -613,7 +615,7 @@ async function runShowcaseDemo(scenario, domain) {
 
       // Concierge Bot Announcement
       appendBotChatMessage(`
-        🛡️ <strong>Chaos Compensation Executed:</strong> Charlie's card was declined (<code>422 INSTRUMENT_DECLINED</code>).<br>
+        <strong>Chaos Compensation Executed:</strong> Charlie's card was declined (<code>422 INSTRUMENT_DECLINED</code>).<br>
         Sequential capture halted safely. Alice &amp; Bob captures were automatically refunded, Charlie was voided, and held seats A1, A2, A3 were freed back to the catalog.
       `);
     }

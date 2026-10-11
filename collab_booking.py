@@ -1065,8 +1065,8 @@ class CollabBooking:
             telemetry.append({
                 "stage": "6. Distributed Compensatory Recovery Executed",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": f"Alice's capture ({alice_cap}) refunded: $16.00 ↩️. Bob's capture ({bob_cap}) refunded: $16.00 ↩️. " +
-                           f"Charlie's authorization ({charlie_auth}) voided ❌. All 3 cinema seats unreserved back to FREE 🎟️. " +
+                "details": f"Alice capture ({alice_cap}) refunded: $16.00. Bob capture ({bob_cap}) refunded: $16.00. " +
+                           f"Charlie authorization ({charlie_auth}) voided. All 3 cinema seats unreserved back to FREE in catalog. " +
                            f"Zero chargeback exposure for merchant. Zero loss for buyers."
             })
 
