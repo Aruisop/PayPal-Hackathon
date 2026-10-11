@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 
 from ai_planner import AIError, DeterministicCatalogMatcher, GroupPlanExplainer, PreferenceInterpreter
 from storage import (catalog_offers, catalog_resources, group_member_preferences,
-                     group_member_profiles, group_memberships, identifier, money,
-                     purchase_contributions, shared_purchases, split_equal_cents,
-                     workshop_groups)
+                     group_member_profiles, group_memberships, group_recovery_tasks,
+                     group_tickets, identifier, money, purchase_contributions,
+                     shared_purchases, split_equal_cents, workshop_groups)
 
 
 class BookingError(Exception):
@@ -650,4 +650,163 @@ class CollabBooking:
                 shared_purchases.c.id == active['id']).values(state='CANCELLED'))
 
         return dict(groupID=group_id, purchaseID=active['id'], state='CANCELLED', hasBooking=False)
+
+    def finalize_booking(self, participant_id, group_id):
+        if not self.paypal:
+            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
+
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if not active or active['state'] not in ('FINALIZING', 'AWAITING_AUTHORIZATIONS'):
+                raise BookingError('NO_FINALIZING_BOOKING', 400)
+
+            contribs = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
+
+            if not all(c['state'] in ('AUTHORIZED', 'CAPTURED') for c in contribs):
+                raise BookingError('ALL_AUTHORIZATIONS_REQUIRED', 400)
+
+            offer = connection.execute(select(catalog_offers).where(
+                catalog_offers.c.id == active['offer_id'])).mappings().first()
+
+        # Fenced claim
+        claim_token = identifier()
+        with self.store.engine.begin() as connection:
+            current_active = connection.execute(select(shared_purchases).where(
+                shared_purchases.c.id == active['id'])).mappings().first()
+            if current_active['state'] == 'CONFIRMED':
+                return self.view(participant_id, group_id)
+            connection.execute(update(shared_purchases).where(
+                shared_purchases.c.id == active['id']).values(
+                state='FINALIZING', fenced_claim_token=claim_token))
+
+        # Sequentially capture authorized contributions
+        captured_so_far = []
+        for c in contribs:
+            if c['state'] == 'CAPTURED' and c['capture_id']:
+                captured_so_far.append(c)
+                continue
+
+            cap_req_id = c['capture_request_id'] or f'collab-cap-{c["id"]}'
+            with self.store.engine.begin() as connection:
+                connection.execute(update(purchase_contributions).where(
+                    purchase_contributions.c.id == c['id']).values(
+                    capture_request_id=cap_req_id))
+
+            payload = {
+                'amount': {
+                    'currency_code': active['currency'],
+                    'value': money(c['share_cents'])
+                },
+                'is_final_capture': True
+            }
+
+            try:
+                cap_res = self.paypal.capture_authorization(c['authorization_id'], payload, cap_req_id)
+                cap_id = cap_res['id']
+                with self.store.engine.begin() as connection:
+                    connection.execute(update(purchase_contributions).where(
+                        purchase_contributions.c.id == c['id']).values(
+                        capture_id=cap_id, state='CAPTURED'))
+                captured_so_far.append(dict(c, capture_id=cap_id, state='CAPTURED'))
+            except Exception as e:
+                now = time.time()
+                for cap_item in captured_so_far:
+                    ref_req_id = f'collab-ref-{cap_item["id"]}'
+                    with self.store.engine.begin() as connection:
+                        connection.execute(insert(group_recovery_tasks).values(
+                            id=identifier(), purchase_id=active['id'], contribution_id=cap_item['id'],
+                            action='REFUND', target_id=cap_item['capture_id'], state='PENDING',
+                            attempt_count=1, last_error=str(e), updated_at=now))
+                    try:
+                        self.paypal.refund_capture(cap_item['capture_id'], {}, ref_req_id)
+                    except Exception:
+                        pass
+
+                for uncap in contribs:
+                    if uncap['id'] not in [x['id'] for x in captured_so_far] and uncap['authorization_id']:
+                        void_req_id = f'collab-void-{uncap["id"]}'
+                        with self.store.engine.begin() as connection:
+                            connection.execute(insert(group_recovery_tasks).values(
+                                id=identifier(), purchase_id=active['id'], contribution_id=uncap['id'],
+                                action='VOID', target_id=uncap['authorization_id'], state='PENDING',
+                                attempt_count=1, last_error=str(e), updated_at=now))
+                        try:
+                            self.paypal.void_authorization(uncap['authorization_id'], void_req_id)
+                        except Exception:
+                            pass
+
+                with self.store.engine.begin() as connection:
+                    connection.execute(update(catalog_resources).where(
+                        catalog_resources.c.held_by_purchase_id == active['id']).values(
+                        state='FREE', held_by_purchase_id=None, held_until=None))
+                    connection.execute(update(shared_purchases).where(
+                        shared_purchases.c.id == active['id']).values(state='CANCELLED'))
+
+                raise BookingError('PARTIAL_CAPTURE_FAILED_REFUNDED', 502)
+
+        # All captures succeeded: Issue private tickets & assign resources as BOOKED
+        now = time.time()
+        with self.store.engine.begin() as connection:
+            for c in contribs:
+                if c['assigned_resource_id']:
+                    connection.execute(update(catalog_resources).where(
+                        catalog_resources.c.id == c['assigned_resource_id']).values(
+                        state='BOOKED', held_until=None))
+
+                ticket_code = f'TICKET-{active["offer_id"]}-{secrets.token_hex(6).upper()}'
+                connection.execute(insert(group_tickets).values(
+                    id=identifier(), purchase_id=active['id'], contribution_id=c['id'],
+                    participant_id=c['participant_id'], resource_id=c['assigned_resource_id'],
+                    ticket_code=ticket_code, issued_at=now))
+
+            connection.execute(update(shared_purchases).where(
+                shared_purchases.c.id == active['id']).values(
+                state='CONFIRMED', fenced_claim_token=None))
+
+        return self.view(participant_id, group_id)
+
+    def get_my_ticket(self, participant_id, group_id):
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, participant_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = connection.execute(select(shared_purchases).where(
+                shared_purchases.c.group_id == group_id,
+                shared_purchases.c.state == 'CONFIRMED'
+            ).order_by(shared_purchases.c.created_at.desc())).mappings().first()
+            if not active:
+                raise BookingError('NO_CONFIRMED_BOOKING', 404)
+
+            ticket = connection.execute(select(group_tickets).where(
+                group_tickets.c.purchase_id == active['id'],
+                group_tickets.c.participant_id == participant_id)).mappings().first()
+            if not ticket:
+                raise BookingError('TICKET_NOT_FOUND', 404)
+
+            contrib = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.id == ticket['contribution_id'])).mappings().first()
+            offer = connection.execute(select(catalog_offers).where(
+                catalog_offers.c.id == active['offer_id'])).mappings().first()
+            resource = connection.execute(select(catalog_resources).where(
+                catalog_resources.c.id == ticket['resource_id'])).mappings().first()
+
+            return {
+                'ticketID': ticket['id'],
+                'ticketCode': ticket['ticket_code'],
+                'participantID': participant_id,
+                'alias': contrib['alias'],
+                'title': offer['title'],
+                'domain': offer['domain'],
+                'scheduleTime': offer['schedule_time'],
+                'assignedResource': resource['label'] if resource else None,
+                'shareCents': contrib['share_cents'],
+                'shareValue': money(contrib['share_cents']),
+                'currency': active['currency'],
+                'issuedAt': ticket['issued_at'],
+                'policy': active['policy']
+            }
 

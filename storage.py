@@ -128,6 +128,27 @@ purchase_contributions = Table('purchase_contributions', metadata,
     Column('created_at', Float, nullable=False),
     UniqueConstraint('purchase_id', 'participant_id', name='uq_purchase_participant'))
 
+group_tickets = Table('group_tickets', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('purchase_id', ForeignKey('shared_purchases.id'), nullable=False),
+    Column('contribution_id', ForeignKey('purchase_contributions.id'), nullable=False),
+    Column('participant_id', ForeignKey('participants.id'), nullable=False),
+    Column('resource_id', ForeignKey('catalog_resources.id'), nullable=False),
+    Column('ticket_code', String(64), nullable=False, unique=True),
+    Column('issued_at', Float, nullable=False),
+    UniqueConstraint('purchase_id', 'participant_id', name='uq_ticket_purchase_participant'))
+
+group_recovery_tasks = Table('group_recovery_tasks', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('purchase_id', ForeignKey('shared_purchases.id'), nullable=False),
+    Column('contribution_id', ForeignKey('purchase_contributions.id'), nullable=False),
+    Column('action', String(20), nullable=False),
+    Column('target_id', String(40), nullable=False),
+    Column('state', String(20), nullable=False, default='PENDING'),
+    Column('attempt_count', Integer, nullable=False, default=0),
+    Column('last_error', String(200)),
+    Column('updated_at', Float, nullable=False))
+
 
 def identifier():
     return secrets.token_hex(16)
@@ -194,6 +215,8 @@ class Store:
                     group_member_preferences.create(connection, checkfirst=True)
                     shared_purchases.create(connection, checkfirst=True)
                     purchase_contributions.create(connection, checkfirst=True)
+                    group_tickets.create(connection, checkfirst=True)
+                    group_recovery_tasks.create(connection, checkfirst=True)
                     revision = 3
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=3))
                 if revision not in (2, 3):

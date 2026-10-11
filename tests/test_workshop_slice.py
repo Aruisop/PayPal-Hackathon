@@ -136,6 +136,38 @@ class FakePayPal:
                 self.authorizations[authorization_id]['status'] = 'VOIDED'
             return dict(id=authorization_id, status='VOIDED')
 
+    def capture_authorization(self, authorization_id, payload, request_id):
+        with self.lock:
+            self.capture_auth_calls = getattr(self, 'capture_auth_calls', 0) + 1
+            if getattr(self, 'fail_capture_auth', False):
+                raise PayPalError('PAYPAL_UNAVAILABLE')
+            if getattr(self, 'reject_capture_auth', False):
+                raise PayPalError('INSTRUMENT_DECLINED', status=422)
+            if not hasattr(self, 'captures'):
+                self.captures = {}
+            if not hasattr(self, 'capture_auth_keys'):
+                self.capture_auth_keys = {}
+            if request_id not in self.capture_auth_keys:
+                cap_id = f'CAP{len(self.captures) + 1}'
+                cap = dict(id=cap_id, status='COMPLETED',
+                           amount=copy.deepcopy(payload.get('amount', {})))
+                self.captures[cap_id] = cap
+                self.capture_auth_keys[request_id] = cap_id
+            else:
+                cap_id = self.capture_auth_keys[request_id]
+                cap = self.captures[cap_id]
+            return copy.deepcopy(cap)
+
+    def refund_capture(self, capture_id, payload, request_id):
+        with self.lock:
+            self.refund_calls = getattr(self, 'refund_calls', 0) + 1
+            if not hasattr(self, 'refunds'):
+                self.refunds = {}
+            ref_id = f'REF{len(self.refunds) + 1}'
+            ref = dict(id=ref_id, status='COMPLETED')
+            self.refunds[ref_id] = ref
+            return copy.deepcopy(ref)
+
 
 class WorkshopSliceTests(unittest.TestCase):
     def setUp(self):

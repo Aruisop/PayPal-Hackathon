@@ -223,6 +223,14 @@ def create_app(config=None, paypal=None):
     def void_group_booking(group_id):
         return jsonify(booking.void_booking(g.participant['id'], group_id))
 
+    @app.post('/api/groups/<group_id>/finalize')
+    def finalize_group_booking(group_id):
+        return jsonify(booking.finalize_booking(g.participant['id'], group_id))
+
+    @app.get('/api/groups/<group_id>/ticket')
+    def get_group_ticket(group_id):
+        return jsonify(booking.get_my_ticket(g.participant['id'], group_id))
+
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):
         return jsonify(checkout.view(g.participant['id'], booking_id))
