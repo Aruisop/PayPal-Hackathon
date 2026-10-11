@@ -1,5 +1,7 @@
 # Individual workshop purchase: review packet
 
+Historical Slice 1 packet. On 11 October 2026 the user accepted this implementation as the development base for `slice/2-group-coordination`; that decision does not retroactively turn the user-observed Sandbox checks below into independent agent evidence or claim external architecture signoff. Current group scope and evidence are in [SLICE2_REVIEW.md](SLICE2_REVIEW.md).
+
 Implemented 4 October 2026. Stop point: this slice only; groups, AI preferences, recommendations, merchant dashboards, seats and SDK v6 are not implemented.
 
 ## Changes and preservation

@@ -2,6 +2,7 @@
 let config, selectedWorkshop, selectedBooking, paypalButtons;
 let busy = false, sdkReady = false, renderVersion = 0;
 const bookings = new Map();
+const groups = new Map();
 const unresolved = new Set(['CREATING', 'CAPTURING', 'PENDING', 'UNKNOWN']);
 function message(text, kind = '') { $('status').textContent = text; $('status').className = kind; }
 function setBusy(value) {
@@ -36,6 +37,10 @@ function saveBooking(booking) {
   bookings.set(booking.id, booking);
   if (selectedWorkshop?.id === booking.workshopID) selectedBooking = booking;
   renderBookings();
+  for (const group of groups.values()) {
+    if (group.workshopID === booking.workshopID) group.myBooking = booking;
+  }
+  renderGroups();
 }
 function defaultStatus(booking) {
   if (!booking) return 'Pay with your Personal Sandbox account. Your booking is saved before checkout opens.';
@@ -159,6 +164,74 @@ async function selectWorkshop(id) {
   });
   renderStatus(); await renderCheckout();
 }
+function groupFeedback(text) { $('group-feedback').textContent = text; }
+function renderGroups() {
+  const container = $('groups');
+  container.replaceChildren();
+  if (!config) return;
+  for (const group of groups.values()) {
+    const card = document.createElement('article'); card.className = 'group-card';
+    const heading = document.createElement('h3'); heading.textContent = group.name; card.append(heading);
+    const detail = document.createElement('p'); detail.className = 'fine';
+    detail.textContent = `${group.role === 'organizer' ? 'You organize' : 'You joined'} · ${group.memberCount} member${group.memberCount === 1 ? '' : 's'}`;
+    card.append(detail);
+    if (group.inviteURL) {
+      const label = document.createElement('label'); label.textContent = 'Invite link';
+      const link = document.createElement('input'); link.readOnly = true; link.value = group.inviteURL;
+      link.addEventListener('focus', () => link.select()); label.append(link); card.append(label);
+    }
+    if (!group.workshopID && group.role === 'organizer') {
+      const label = document.createElement('label'); label.textContent = 'Choose one workshop for everyone';
+      const picker = document.createElement('select');
+      for (const workshop of config.workshops) {
+        const option = document.createElement('option'); option.value = workshop.id;
+        option.textContent = `${workshop.title} · ${price(workshop)}`; picker.append(option);
+      }
+      label.append(picker); card.append(label);
+      const choose = document.createElement('button'); choose.type = 'button'; choose.textContent = 'Set group workshop';
+      choose.addEventListener('click', async () => {
+        choose.disabled = true;
+        try {
+          const updated = await api(`/api/groups/${encodeURIComponent(group.id)}/selection`, {workshopID: picker.value});
+          groups.set(group.id, updated); renderGroups(); groupFeedback('Workshop choice shared with group members.');
+        } catch (error) { groupFeedback(error.message); choose.disabled = false; }
+      }); card.append(choose);
+    } else if (group.workshopID) {
+      const workshop = config.workshops.find((item) => item.id === group.workshopID);
+      const choice = document.createElement('p'); choice.textContent = `Chosen workshop: ${workshop?.title || group.workshopID}`;
+      card.append(choice);
+      const own = document.createElement('p'); own.className = 'fine';
+      own.textContent = group.myBooking ? `Your payment: ${group.myBooking.attemptState || 'NOT_STARTED'}` : 'Your payment: not started';
+      card.append(own);
+      const book = document.createElement('button'); book.type = 'button';
+      book.textContent = group.myBooking?.lessonURL ? 'View your booking and lesson' : 'Book or view your own payment';
+      book.addEventListener('click', async () => {
+        await selectWorkshop(group.workshopID);
+        document.querySelector('.checkout').scrollIntoView({behavior: 'smooth', block: 'start'});
+      }); card.append(book);
+    } else {
+      const waiting = document.createElement('p'); waiting.className = 'fine';
+      waiting.textContent = 'Waiting for the organizer to choose a workshop.'; card.append(waiting);
+    }
+    container.append(card);
+  }
+}
+async function refreshGroups() {
+  const response = await api('/api/groups');
+  const next = JSON.stringify(response.groups);
+  if (next === JSON.stringify([...groups.values()])) return;
+  groups.clear(); response.groups.forEach((group) => groups.set(group.id, group)); renderGroups();
+}
+$('create-group').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submit = event.currentTarget.querySelector('button[type="submit"]'); submit.disabled = true;
+  try {
+    const group = await api('/api/groups', {name: $('group-name').value});
+    groups.set(group.id, group); renderGroups(); $('group-name').value = '';
+    groupFeedback('Group created. Share its invite link with another browser profile.');
+  } catch (error) { groupFeedback(error.message); }
+  finally { submit.disabled = false; }
+});
 $('recheck').addEventListener('click', async () => {
   if (busy || !selectedBooking) return;
   const bookingID = selectedBooking.id;
@@ -189,6 +262,15 @@ async function init() {
       catch { /* Keep the saved order visible; manual recheck remains available. */ }
     }));
     renderBookings();
+    await refreshGroups();
+    const invite = new URLSearchParams(location.search).get('invite');
+    if (invite) {
+      history.replaceState(null, '', location.pathname);
+      try {
+        const group = await api('/api/groups/join', {inviteToken: invite});
+        groups.set(group.id, group); renderGroups(); groupFeedback(`Joined ${group.name}.`);
+      } catch (error) { groupFeedback(`Could not join group: ${error.message}. Reopen the invite link to retry.`); }
+    }
     $('setup').hidden = config.configured;
     $('mode').textContent = config.configured ? 'Sandbox connected · test money only' : 'Sandbox checkout not configured';
     $('timezone').textContent = `Schedules shown in your browser timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.`;
@@ -224,4 +306,8 @@ setInterval(async () => {
     if (wasPayable !== selectedBooking.canPay || selectedBooking.lessonURL) await renderCheckout();
   } catch { /* Manual recheck remains available; retain last known state. */ }
 }, 10000);
+setInterval(async () => {
+  if (!config || document.hidden) return;
+  try { await refreshGroups(); } catch { /* Refreshing the page remains available. */ }
+}, 15000);
 init();

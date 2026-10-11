@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from flask import Flask, g, jsonify, make_response, request, send_from_directory
 from markupsafe import escape
 from checkout import Checkout, CheckoutError
+from groups import GroupError, Groups
 from payments import PayPal, PayPalError
 from storage import Store
 
@@ -40,12 +41,13 @@ def create_app(config=None, paypal=None):
         from sqlalchemy import select
         from storage import versions
         with store.engine.connect() as connection:
-            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 1:
+            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 2:
                 raise RuntimeError('Run python server.py migrate before starting')
     adapter = paypal or PayPal(os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''),
                                os.getenv('PAYPAL_MERCHANT_ID', ''))
     checkout = Checkout(store, adapter)
-    app.extensions.update(store=store, checkout=checkout, paypal=adapter)
+    groups = Groups(store, checkout, app.config['APP_ORIGIN'])
+    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter)
 
     @app.before_request
     def authorize():
@@ -70,6 +72,10 @@ def create_app(config=None, paypal=None):
 
     @app.errorhandler(CheckoutError)
     def checkout_error(error):
+        return jsonify(error=error.issue), error.status
+
+    @app.errorhandler(GroupError)
+    def group_error(error):
         return jsonify(error=error.issue), error.status
 
     @app.errorhandler(PayPalError)
@@ -111,6 +117,30 @@ def create_app(config=None, paypal=None):
     @app.get('/api/bookings')
     def my_bookings():
         return jsonify(bookings=checkout.list(g.participant['id']))
+
+    @app.get('/api/groups')
+    def my_groups():
+        return jsonify(groups=groups.list(g.participant['id']))
+
+    @app.post('/api/groups')
+    def create_group():
+        body = request.get_json()
+        return jsonify(groups.create(g.participant['id'], body.get('name') if isinstance(body, dict) else None))
+
+    @app.post('/api/groups/join')
+    def join_group():
+        body = request.get_json()
+        return jsonify(groups.join(g.participant['id'], body.get('inviteToken') if isinstance(body, dict) else None))
+
+    @app.get('/api/groups/<group_id>')
+    def my_group(group_id):
+        return jsonify(groups.view(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/selection')
+    def select_group_workshop(group_id):
+        body = request.get_json()
+        return jsonify(groups.select_workshop(g.participant['id'], group_id,
+            body.get('workshopID') if isinstance(body, dict) else None))
 
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):
@@ -166,7 +196,7 @@ if __name__ == '__main__':
         store = Store(os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db'))
         store.migrate()
         store.seed()
-        print('Database revision 1 applied; catalog seeded if empty. No database URL displayed.')
+        print('Database revision 2 applied; catalog seeded if empty. No database URL displayed.')
     else:
         from waitress import serve
         application = create_app()

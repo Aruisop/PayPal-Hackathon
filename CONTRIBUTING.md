@@ -4,7 +4,7 @@ Start with the [branch map](docs/BRANCHES.md) and [current development guide](do
 
 ## Pick the right base
 
-`master` currently contains the earlier retail checkout demo. `slice/1-persistent-workshop-checkout` contains the workshop Slice 1 review candidate. It is published for review, not merged or architecture-accepted. Do not start new workshop work from the retail baseline by accident.
+`master` contains the earlier retail checkout demo. `slice/1-persistent-workshop-checkout` is the user-accepted development base for `slice/2-group-coordination`, which adds only group coordination and remains a review candidate. Neither workshop branch is represented as merged into `master` or externally architecture-approved.
 
 For an authorized Slice 1 correction, create an isolated branch from its remote tip:
 
@@ -13,7 +13,7 @@ git fetch origin
 git switch -c fix/slice1-describe-the-problem origin/slice/1-persistent-workshop-checkout
 ```
 
-Use an approved base for later work; update `docs/BRANCHES.md` whenever a new slice is delivered or acceptance changes. Do not create group/AI implementation branches from planning notes alone. Preserve unfinished work before switching branches; never discard someone else's changes to get a clean checkout.
+Use an approved base for later work; update `docs/BRANCHES.md` whenever a new slice is delivered or acceptance changes. AI implementation remains unapproved. Preserve unfinished work before switching branches; never discard someone else's changes to get a clean checkout.
 
 ## Keep changes reviewable
 
@@ -41,6 +41,6 @@ GitHub CI installs pinned dependencies and runs mocked tests without PayPal cred
 
 ## Review and integration
 
-Opening/publishing a branch is not acceptance. The architecture reviewer decides whether Slice 1 is accepted; an authorized maintainer then merges the reviewed change. Do not alter the GitHub default branch or branch protection as part of a normal contribution. No hosting service, secret configuration or automatic deployment is provided by this workflow.
+Opening/publishing a branch is not acceptance. The user accepted Slice 1 as a development base; Slice 2 still requires review. An authorized maintainer separately decides whether to merge a reviewed change. Do not alter the GitHub default branch or branch protection as part of a normal contribution. No hosting service, secret configuration or automatic deployment is provided by this workflow.
 
 The repository still needs a team-selected license before any submission requiring an open-source license. This guide does not choose a license or claim the complete hackathon product is shipped.

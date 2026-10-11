@@ -38,6 +38,19 @@ attempts = Table('payment_attempts', metadata,
 entitlements = Table('entitlements', metadata,
     Column('booking_id', ForeignKey('bookings.id'), primary_key=True),
     Column('capture_id', String(40), unique=True, nullable=False), Column('granted_at', Float, nullable=False))
+workshop_groups = Table('workshop_groups', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('name', String(80), nullable=False),
+    Column('organizer_id', ForeignKey('participants.id'), nullable=False),
+    Column('invite_token', String(64), unique=True, nullable=False),
+    Column('workshop_id', ForeignKey('workshops.id')),
+    Column('created_at', Float, nullable=False))
+group_memberships = Table('group_memberships', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('group_id', ForeignKey('workshop_groups.id'), nullable=False),
+    Column('participant_id', ForeignKey('participants.id'), nullable=False),
+    Column('joined_at', Float, nullable=False),
+    UniqueConstraint('group_id', 'participant_id', name='uq_group_participant'))
 
 
 def identifier():
@@ -71,17 +84,21 @@ class Store:
                 connection.execute('PRAGMA busy_timeout=10000')
 
     def migrate(self):
-        # Revision 1 is immutable. Future changes must add a migration here.
+        # Revision 1 remains immutable. Revision 2 adds only group tables.
         from sqlalchemy import inspect
         if 'schema_versions' in inspect(self.engine).get_table_names():
-            with self.engine.connect() as connection:
+            with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
-            if revision != 1:
-                raise RuntimeError('Unsupported database revision; run the documented migration')
+                if revision == 1:
+                    workshop_groups.create(connection, checkfirst=True)
+                    group_memberships.create(connection, checkfirst=True)
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=2))
+                elif revision != 2:
+                    raise RuntimeError('Unsupported database revision; run the documented migration')
             return
         metadata.create_all(self.engine)
         with self.engine.begin() as connection:
-            connection.execute(insert(versions).values(id=1, revision=1))
+            connection.execute(insert(versions).values(id=1, revision=2))
 
     def seed(self):
         with self.engine.begin() as connection:
