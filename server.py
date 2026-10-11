@@ -103,15 +103,21 @@ def create_app(config=None, paypal=None):
 
     @app.get('/')
     def index():
-        return send_from_directory(ROOT / 'public', 'index.html')
+        res = make_response(send_from_directory(ROOT / 'public', 'index.html'))
+        res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return res
 
     @app.get('/app.js')
     def javascript():
-        return send_from_directory(ROOT / 'public', 'app.js')
+        res = make_response(send_from_directory(ROOT / 'public', 'app.js'))
+        res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return res
 
     @app.get('/style.css')
     def stylesheet():
-        return send_from_directory(ROOT / 'public', 'style.css')
+        res = make_response(send_from_directory(ROOT / 'public', 'style.css'))
+        res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return res
 
     @app.get('/api/config')
     def configuration():
@@ -231,6 +237,13 @@ def create_app(config=None, paypal=None):
     def get_group_ticket(group_id):
         return jsonify(booking.get_my_ticket(g.participant['id'], group_id))
 
+    @app.post('/api/demo/run')
+    def run_judge_demo():
+        body = request.get_json() or {}
+        scenario = body.get('scenario', 'happy_path')
+        domain = body.get('domain', 'movie')
+        return jsonify(booking.run_demo(g.participant['id'], scenario=scenario, domain=domain))
+
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):
         return jsonify(checkout.view(g.participant['id'], booking_id))
@@ -283,9 +296,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.command == 'migrate':
         store = Store(os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db'))
-        store.migrate()
+        store.migrate(target=3)
         store.seed()
-        print('Database revision 2 applied; catalog seeded if empty. No database URL displayed.')
+        print('Database revision 3 applied; catalog seeded if empty. No database URL displayed.')
     else:
         from waitress import serve
         application = create_app()

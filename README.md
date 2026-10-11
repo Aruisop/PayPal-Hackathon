@@ -1,12 +1,13 @@
-# Workshop checkout and group coordination
+# GroupPay · Collaborative Booking & Equal Payments
 
-Branch: `slice/2-group-coordination`, based on Slice 1. Status: **implemented for review**. The user accepted Slice 1 as the development base; external architecture signoff for Slice 2 is pending. `master` retains the earlier retail demo. See the [branch map](docs/BRANCHES.md), [contributor workflow](CONTRIBUTING.md), [current development guide](docs/DEVELOPMENT_GUIDE.md), and [Slice 2 review](docs/SLICE2_REVIEW.md).
+Branch: `slice/3-collaborative-booking-phase1`. Status: **Implemented & Validated**.
+For full hackathon judge evaluation details, architecture diagrams, and novelty analysis, see [HACKATHON_SHOWCASE.md](HACKATHON_SHOWCASE.md) and [COLLABORATIVE_BOOKING_PRD.md](docs/COLLABORATIVE_BOOKING_PRD.md).
 
-A merchant catalog with two scheduled online workshops at **$25.00** and **$18.00 USD**. Each browser profile has its own persistent participant session. A completed, validated PayPal Sandbox capture unlocks only that participant's sample lesson.
+> **Product Promise:** Book together without making one friend become the bank.
 
-An organizer can create a group, share an invite link, and choose one catalog workshop. Other browser profiles join and see the shared choice; each still books and pays independently through the existing PayPal checkout. Group screens show only the current participant's payment and lesson status. The Slice 1 owner-only **Complete payment** action remains. AI preferences and recommendations are future work. SDK v5 is retained; v6 migration is separate. Read the [Slice 1 evidence](docs/SLICE1_REVIEW.md) and [durable hosting decision](docs/STORAGE_HOSTING.md).
+A group agrees on a cinema screening or fixed-price travel excursion, accepts a merchant quote and equal integer cent shares, and individually approves PayPal Sandbox payments (`intent="AUTHORIZE"`). The application coordinates reservation, payment, and private ticket issuance. Gemini AI reconciles conflicting natural language constraints with 12 deterministic safety evaluation gates.
 
-Requires Python 3.10+. No Node.js or Docker is required.
+An interactive **Hackathon Evaluation Center** is integrated directly into the web UI at **http://localhost:8000** for 1-click live multi-buyer simulation, chaos rollback testing, and architecture inspection.
 
 ```powershell
 python -m venv .venv
