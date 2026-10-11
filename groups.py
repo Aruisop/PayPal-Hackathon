@@ -44,6 +44,20 @@ class Groups:
                     group_memberships.c.group_id == group_id,
                     group_memberships.c.participant_id == participant_id)).scalar()
                 if not existing:
+                    # Enforce F03: Joining closes at roster freeze
+                    try:
+                        from storage import shared_purchases
+                        frozen = connection.execute(select(shared_purchases.c.id).where(
+                            shared_purchases.c.group_id == group_id,
+                            shared_purchases.c.frozen_at.is_not(None),
+                            shared_purchases.c.state.in_(['AWAITING_AUTHORIZATIONS', 'FINALIZING', 'CONFIRMED'])
+                        )).scalar()
+                        if frozen:
+                            raise GroupError('ROSTER_FROZEN', 409)
+                    except GroupError:
+                        raise
+                    except Exception:
+                        pass
                     connection.execute(insert(group_memberships).values(id=identifier(), group_id=group_id,
                         participant_id=participant_id, joined_at=time.time()))
         except IntegrityError:

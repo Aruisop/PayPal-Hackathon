@@ -1,4 +1,4 @@
-﻿"""Persistent individual workshop checkout, served with Waitress."""
+"""Persistent individual workshop checkout, served with Waitress."""
 import argparse
 import hmac
 import os
@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from flask import Flask, g, jsonify, make_response, request, send_from_directory
 from markupsafe import escape
 from checkout import Checkout, CheckoutError
+from collab_booking import BookingError, CollabBooking
 from groups import GroupError, Groups
 from payments import PayPal, PayPalError
 from storage import Store
@@ -35,19 +36,20 @@ def create_app(config=None, paypal=None):
             raise RuntimeError('Production requires HTTPS APP_ORIGIN and COOKIE_SECURE=true')
     store = Store(app.config['DATABASE_URL'])
     if app.config['APP_ENV'] != 'production':
-        store.migrate()
+        store.migrate(target=3)
         store.seed()
     else:
         from sqlalchemy import select
         from storage import versions
         with store.engine.connect() as connection:
-            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 2:
+            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() not in (2, 3):
                 raise RuntimeError('Run python server.py migrate before starting')
     adapter = paypal or PayPal(os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''),
                                os.getenv('PAYPAL_MERCHANT_ID', ''))
     checkout = Checkout(store, adapter)
     groups = Groups(store, checkout, app.config['APP_ORIGIN'])
-    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter)
+    booking = CollabBooking(store, app.config['APP_ORIGIN'])
+    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter, booking=booking)
 
     @app.before_request
     def authorize():
@@ -76,6 +78,10 @@ def create_app(config=None, paypal=None):
 
     @app.errorhandler(GroupError)
     def group_error(error):
+        return jsonify(error=error.issue), error.status
+
+    @app.errorhandler(BookingError)
+    def booking_error(error):
         return jsonify(error=error.issue), error.status
 
     @app.errorhandler(PayPalError)
@@ -141,6 +147,40 @@ def create_app(config=None, paypal=None):
         body = request.get_json()
         return jsonify(groups.select_workshop(g.participant['id'], group_id,
             body.get('workshopID') if isinstance(body, dict) else None))
+
+    @app.get('/api/catalog/offers')
+    def get_offers():
+        domain = request.args.get('domain')
+        return jsonify(offers=store.offers(domain))
+
+    @app.post('/api/groups/<group_id>/profile')
+    def set_group_profile(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict):
+            raise BookingError('INVALID_REQUEST', 400)
+        return jsonify(booking.set_profile(g.participant['id'], group_id, body.get('alias', '')))
+
+    @app.post('/api/groups/<group_id>/quote')
+    def get_group_quote(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict) or not body.get('offerID'):
+            raise BookingError('OFFER_REQUIRED', 400)
+        return jsonify(booking.quote(g.participant['id'], group_id, body.get('offerID'), body.get('resourceIDs')))
+
+    @app.post('/api/groups/<group_id>/freeze')
+    def freeze_group(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict) or not body.get('offerID'):
+            raise BookingError('OFFER_REQUIRED', 400)
+        return jsonify(booking.freeze(g.participant['id'], group_id, body.get('offerID'), body.get('resourceIDs')))
+
+    @app.get('/api/groups/<group_id>/booking')
+    def get_group_booking(group_id):
+        return jsonify(booking.view(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/booking/consent')
+    def give_group_consent(group_id):
+        return jsonify(booking.give_consent(g.participant['id'], group_id))
 
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):
