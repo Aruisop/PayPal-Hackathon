@@ -243,6 +243,18 @@ def create_app(config=None, paypal=None):
     def simulate_group_authorizations(group_id):
         return jsonify(booking.simulate_authorizations(g.participant['id'], group_id))
 
+    @app.get('/api/groups/<group_id>/liquidity-profiles')
+    def get_group_liquidity_profiles(group_id):
+        return jsonify(booking.get_liquidity_profiles(g.participant['id'], group_id))
+
+    @app.post('/api/groups/<group_id>/preflight-reserve')
+    def autonomous_preflight_and_reserve(group_id):
+        body = request.get_json() or {}
+        simulate_deficit = bool(body.get('simulateDeficit', False))
+        result = booking.autonomous_preflight_and_reserve(g.participant['id'], group_id, simulate_deficit=simulate_deficit)
+        status_code = 422 if result.get('status') == 'PREFLIGHT_FAILED' else 200
+        return jsonify(result), status_code
+
     @app.get('/api/groups/<group_id>/ticket')
     def get_group_ticket(group_id):
         return jsonify(booking.get_my_ticket(g.participant['id'], group_id))

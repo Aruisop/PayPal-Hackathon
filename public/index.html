@@ -335,6 +335,44 @@
           </button>
         </div>
 
+        <!-- BANK PRE-FLIGHT LIQUIDITY CHECK & AUTONOMOUS CASH RESERVATION -->
+        <div class="liquidity-preflight-card" id="liquidity-preflight-card">
+          <div class="preflight-header">
+            <div class="preflight-title-group">
+              <div class="preflight-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+              </div>
+              <div>
+                <div class="preflight-badge-row">
+                  <span class="badge badge-gold">OPEN BANKING LIQUIDITY VERIFICATION</span>
+                  <span class="badge badge-sandbox">AUTONOMOUS CASH HOLD</span>
+                </div>
+                <h3 class="preflight-title">Collaborator Bank Liquidity &amp; Autonomous Cash Hold</h3>
+                <p class="fine">
+                  Interact with linked bank accounts before payment. Verify liquidity in real-time and autonomously reserve cash holds with PayPal Sandbox (<code>intent="AUTHORIZE"</code>).
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Collaborator Bank Accounts & Liquidity Grid -->
+          <div class="bank-accounts-grid" id="bank-accounts-grid">
+            <!-- Populated dynamically via app.js -->
+          </div>
+
+          <!-- Preflight Control Actions -->
+          <div class="preflight-actions-row">
+            <button id="btn-preflight-autonomous" type="button" class="btn btn-primary btn-glow">
+              <svg class="btn-tiny-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <span>Run Autonomous Pre-Check &amp; Reserve Cash</span>
+            </button>
+            <button id="btn-preflight-deficit" type="button" class="btn btn-outline-danger" title="Simulate bank balance deficit to test diagnostic rejection &amp; safe redirect flow">
+              <svg class="btn-tiny-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <span>Test Insufficient Bank Funds (Simulate Failure)</span>
+            </button>
+          </div>
+        </div>
+
         <!-- MULTI-BUYER AUTHORIZATION PROGRESS GAUGE -->
         <div class="auth-meter-card">
           <div class="meter-header">
@@ -747,6 +785,86 @@
             <button type="submit" class="btn btn-primary">+ Add to Roster</button>
           </div>
         </form>
+      </div>
+    </div>
+  <!-- MODAL: BANK LIQUIDITY FAILURE DIAGNOSTIC & SAFE REDIRECT -->
+  <div id="modal-liquidity-failure" class="modal-backdrop" hidden>
+    <div class="modal-card modal-card-danger">
+      <div class="modal-header modal-header-danger">
+        <div class="danger-title-wrap">
+          <span class="badge badge-danger">422 INSUFFICIENT FUNDS DETECTED</span>
+          <h2 id="deficit-modal-title">Pre-Flight Bank Verification Failed</h2>
+        </div>
+        <button id="close-deficit-modal-btn" type="button" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="deficit-alert-banner">
+          <svg class="deficit-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <div>
+            <strong id="deficit-exact-cause">Bank pre-check rejected hold: Account has insufficient funds.</strong>
+            <p class="fine" id="deficit-safeguard-notice">Zero funds were captured. All other participants' holds remain completely protected.</p>
+          </div>
+        </div>
+
+        <!-- Line-Item Diagnostic Breakdown Table -->
+        <div class="deficit-breakdown-card">
+          <h4 class="breakdown-heading">Diagnostic Audit Ledger</h4>
+          <div class="deficit-line-item">
+            <span>Affected Collaborator:</span>
+            <strong id="deficit-participant-name">Charlie</strong>
+          </div>
+          <div class="deficit-line-item">
+            <span>Issuing Bank &amp; Account:</span>
+            <span id="deficit-bank-name" class="mono-code">Wells Fargo Everyday (****1042)</span>
+          </div>
+          <div class="deficit-line-item">
+            <span>Required Split Share:</span>
+            <span id="deficit-required-share" class="deficit-val-req">$16.00 USD</span>
+          </div>
+          <div class="deficit-line-item">
+            <span>Current Available Liquidity:</span>
+            <span id="deficit-available-balance" class="deficit-val-avail">$12.00 USD</span>
+          </div>
+          <div class="deficit-line-item deficit-shortfall-highlight">
+            <span>Line-Item Shortfall:</span>
+            <strong id="deficit-shortfall-amount" class="color-danger">-$4.00 USD</strong>
+          </div>
+        </div>
+
+        <!-- Autonomous Safe Redirect & Remediation Pathways -->
+        <div class="remediation-section">
+          <h4>Autonomous Safe Recovery Pathways:</h4>
+          <p class="fine">Select how you want to remediate without financial penalties or stranded group funds:</p>
+          <div class="remediation-buttons-grid">
+            <button id="btn-remedy-switch" type="button" class="btn-remediation-option">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+              </div>
+              <div class="option-text">
+                <strong>Switch Payment Instrument</strong>
+                <span>Link backup debit card or secondary checking account</span>
+              </div>
+            </button>
+            <button id="btn-remedy-ai" type="button" class="btn-remediation-option">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+              <div class="option-text">
+                <strong>Ask AI Concierge to Find Lower-Cost Activity</strong>
+                <span>Auto-prompt Gemini to discover experiences under budget</span>
+              </div>
+            </button>
+            <button id="btn-remedy-release" type="button" class="btn-remediation-option btn-remediation-danger">
+              <div class="option-icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+              </div>
+              <div class="option-text">
+                <strong>Safely Cancel &amp; Release Holds</strong>
+                <span>Safely release all held seats with zero penalty or fee</span>
+              </div>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

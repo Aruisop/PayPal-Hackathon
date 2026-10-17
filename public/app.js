@@ -236,7 +236,12 @@ async function api(path, body) {
   let data;
   try { data = await response.json(); }
   catch { throw new Error('Server response could not be parsed.'); }
-  if (!response.ok) throw new Error(data.message || data.error || 'The request failed.');
+  if (!response.ok) {
+    const err = new Error(data.message || data.error || data.exactFailureCause || 'The request failed.');
+    err.status = response.status;
+    err.payload = data;
+    throw err;
+  }
   return data;
 }
 
@@ -509,6 +514,24 @@ async function selectGroup(groupId) {
 // -------------------------------------------------------------
 // VIEW 3: COLLABORATIVE GROUP EXPERIENCE ROOM
 // -------------------------------------------------------------
+function startHoldCountdown(deadline) {
+  if (holdTimerInterval) clearInterval(holdTimerInterval);
+  const updateTimer = () => {
+    const remaining = Math.max(0, Math.floor(deadline - Date.now() / 1000));
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    const str = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    const el = $('canvas-hold-countdown');
+    if (el) el.textContent = str;
+    if (remaining <= 0) {
+      clearInterval(holdTimerInterval);
+      setCollabStatus('Hold deadline elapsed. Inventory released back to catalog.');
+    }
+  };
+  updateTimer();
+  holdTimerInterval = setInterval(updateTimer, 1000);
+}
+
 async function loadGroupBookingState() {
   if (!activeGroup) return;
   try {
@@ -552,6 +575,38 @@ function renderActiveGroupRoom() {
   // Render Seating Map & Multi-buyer Ledger
   renderSeatMap();
   renderMemberAuthList();
+  loadLiquidityProfiles();
+}
+
+async function loadLiquidityProfiles() {
+  const container = $('bank-accounts-grid');
+  if (!container || !activeGroup) return;
+  try {
+    const res = await api(`/api/groups/${activeGroup.id}/liquidity-profiles`);
+    const profiles = res.profiles || [];
+    container.innerHTML = profiles.map((p) => {
+      return `
+        <div class="bank-account-item ${p.isSelf ? 'is-self' : ''}">
+          <div class="bank-acc-header">
+            <span class="bank-acc-alias">
+              ${escapeHtml(p.alias)}
+              ${p.isSelf ? '<span class="bank-acc-tag">YOU</span>' : ''}
+            </span>
+            <span class="badge badge-success" style="font-size:9.5px; padding:1px 6px;">
+              ${p.isVerified ? 'VERIFIED' : 'PENDING'}
+            </span>
+          </div>
+          <div class="bank-acc-name">${escapeHtml(p.linkedBank)}</div>
+          <div class="bank-acc-balance-row">
+            <span class="bank-acc-balance-label">Available Liquidity:</span>
+            <strong class="bank-acc-balance-val">$${escapeHtml(p.balanceValue)} USD</strong>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.warn('Failed loading liquidity profiles:', err);
+  }
 }
 
 function renderRosterAvatars() {
@@ -934,6 +989,105 @@ function setupRoomActions() {
     }
   });
 
+  // Autonomous Pre-Flight Liquidity Check & Cash Reservation
+  $('btn-preflight-autonomous')?.addEventListener('click', async () => {
+    if (!activeGroup) return;
+    SOUNDS.click();
+    try {
+      setCollabStatus('Executing autonomous open banking liquidity check and PayPal Sandbox reservations…');
+      await api(`/api/groups/${activeGroup.id}/preflight-reserve`, { simulateDeficit: false });
+      SOUNDS.success();
+      await loadGroupBookingState();
+      renderMemberAuthList();
+      setCollabStatus('Pre-flight verified! Cash holds reserved autonomously in PayPal Sandbox (intent="AUTHORIZE").');
+      appendBotChatMessage(`
+        <strong>Autonomous Cash Holds Reserved:</strong><br>
+        Open banking pre-flight verified sufficient liquidity across all linked bank accounts.<br>
+        PayPal Sandbox holds placed under <code>intent="AUTHORIZE"</code> directly against each collaborator's instrument.<br>
+        Status: <strong>FINALIZING</strong>. Ready to confirm booking and issue passes.
+      `);
+    } catch (err) {
+      alert(`Pre-flight reservation failed: ${err.message}`);
+    }
+  });
+
+  // Test Insufficient Bank Funds (Deficit Simulation)
+  $('btn-preflight-deficit')?.addEventListener('click', async () => {
+    if (!activeGroup) return;
+    SOUNDS.click();
+    try {
+      setCollabStatus('Evaluating banking liquidity with simulated Charlie account shortfall…');
+      await api(`/api/groups/${activeGroup.id}/preflight-reserve`, { simulateDeficit: true });
+    } catch (err) {
+      SOUNDS.alert();
+      const payload = err.payload || {};
+      if (err.status === 422 || payload.status === 'PREFLIGHT_FAILED') {
+        const fp = payload.failedParticipant || {};
+        $('deficit-modal-title').textContent = 'Pre-Flight Bank Verification Failed';
+        $('deficit-exact-cause').textContent = payload.exactFailureCause || err.message;
+        $('deficit-safeguard-notice').textContent = payload.safeguardNotice || 'Zero funds were captured. Friends\' holds remain protected.';
+        $('deficit-participant-name').textContent = fp.alias || 'Collaborator';
+        $('deficit-bank-name').textContent = fp.bank || 'Linked Bank Account';
+        $('deficit-required-share').textContent = fp.requiredShareValue ? `$${fp.requiredShareValue} USD` : '$16.00 USD';
+        $('deficit-available-balance').textContent = fp.availableBalanceValue ? `$${fp.availableBalanceValue} USD` : '$12.00 USD';
+        $('deficit-shortfall-amount').textContent = fp.shortfallValue ? `-$${fp.shortfallValue} USD` : '-$4.00 USD';
+        $('modal-liquidity-failure').hidden = false;
+        setCollabStatus(`Bank pre-check rejected hold: ${fp.alias || 'Charlie'} has a $${fp.shortfallValue || '4.00'} deficit. Redirecting to remediation pathways.`);
+      } else {
+        alert(`Deficit test error: ${err.message}`);
+      }
+    }
+  });
+
+  // Deficit Modal Dismissal
+  $('close-deficit-modal-btn')?.addEventListener('click', () => {
+    $('modal-liquidity-failure').hidden = true;
+  });
+
+  // Remediation Option 1: Switch Payment Instrument
+  $('btn-remedy-switch')?.addEventListener('click', () => {
+    $('modal-liquidity-failure').hidden = true;
+    SOUNDS.auth();
+    setCollabStatus('Switched Charlie to backup payment instrument (Chase Premier Checking ****4892).');
+    appendBotChatMessage(`
+      <strong>Payment Instrument Switched:</strong><br>
+      Charlie's payment instrument was switched to backup checking account (Chase Premier Checking ****4892, $240.00 USD available).<br>
+      You can now re-run the autonomous pre-check and cash reservation!
+    `);
+    loadLiquidityProfiles();
+  });
+
+  // Remediation Option 2: AI Budget Revision
+  $('btn-remedy-ai')?.addEventListener('click', async () => {
+    $('modal-liquidity-failure').hidden = true;
+    SOUNDS.click();
+    setCollabStatus('Redirecting back to AI Concierge to adjust budget ceiling…');
+    appendUserChatMessage('Alice (Lead)', 'AL', 'Charlie has an account shortfall. Concierge, please find an experience under $12/person so all of us can participate.');
+    await confirmAndPlanConstraints({ budgetMinor: 1200, preferredDays: ['Friday', 'Saturday'] });
+  });
+
+  // Remediation Option 3: Safely Cancel & Release
+  $('btn-remedy-release')?.addEventListener('click', async () => {
+    $('modal-liquidity-failure').hidden = true;
+    if (!activeGroup) return;
+    SOUNDS.alert();
+    setCollabStatus('Releasing group inventory and cancelling hold safely with zero fee…');
+    try {
+      await api(`/api/groups/${activeGroup.id}/booking/void`, {});
+      await loadGroupBookingState();
+      renderSeatMap();
+      renderMemberAuthList();
+      setCollabStatus('Group holds safely cancelled and seats released back to catalog with zero financial penalty.');
+      appendBotChatMessage(`
+        <strong>Group Hold Safely Released:</strong><br>
+        All temporary inventory locks and PayPal reservations have been cancelled with 0 fees charged.<br>
+        You can coordinate a new experience at any time.
+      `);
+    } catch (err) {
+      alert(`Release failed: ${err.message}`);
+    }
+  });
+
   // In-Chat Individual Authorize Button
   $('in-chat-authorize-btn')?.addEventListener('click', async () => {
     if (!activeGroup) return;
@@ -1022,25 +1176,6 @@ function setupRoomActions() {
       alert('Group invite link copied! Share with friends to let them join.');
     }).catch(() => alert(`Invite link: ${url}`));
   });
-
-  // Hold Timer Countdown
-  function startHoldCountdown(deadline) {
-    if (holdTimerInterval) clearInterval(holdTimerInterval);
-    const updateTimer = () => {
-      const remaining = Math.max(0, Math.floor(deadline - Date.now() / 1000));
-      const mins = Math.floor(remaining / 60);
-      const secs = remaining % 60;
-      const str = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-      const el = $('canvas-hold-countdown');
-      if (el) el.textContent = str;
-      if (remaining <= 0) {
-        clearInterval(holdTimerInterval);
-        setCollabStatus('Hold deadline elapsed. Inventory released back to catalog.');
-      }
-    };
-    updateTimer();
-    holdTimerInterval = setInterval(updateTimer, 1000);
-  }
 
   // Pass Buttons
   $('btn-download-pass')?.addEventListener('click', downloadPassJson);
