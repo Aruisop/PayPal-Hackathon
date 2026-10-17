@@ -233,6 +233,16 @@ def create_app(config=None, paypal=None):
     def finalize_group_booking(group_id):
         return jsonify(booking.finalize_booking(g.participant['id'], group_id))
 
+    @app.post('/api/groups/<group_id>/members/add-demo')
+    def add_demo_group_member(group_id):
+        body = request.get_json() or {}
+        alias = body.get('alias', 'Friend')
+        return jsonify(booking.add_friend(g.participant['id'], group_id, alias))
+
+    @app.post('/api/groups/<group_id>/simulate-authorizations')
+    def simulate_group_authorizations(group_id):
+        return jsonify(booking.simulate_authorizations(g.participant['id'], group_id))
+
     @app.get('/api/groups/<group_id>/ticket')
     def get_group_ticket(group_id):
         return jsonify(booking.get_my_ticket(g.participant['id'], group_id))

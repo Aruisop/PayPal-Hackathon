@@ -89,10 +89,33 @@ class Groups:
                 booking_id = connection.execute(select(bookings.c.id).where(
                     bookings.c.participant_id == participant_id,
                     bookings.c.workshop_id == group['workshop_id'])).scalar()
+            members_data = []
+            try:
+                from storage import group_member_profiles
+                member_rows = connection.execute(select(
+                    group_memberships.c.participant_id,
+                    group_memberships.c.joined_at,
+                    group_member_profiles.c.alias
+                ).select_from(
+                    group_memberships.outerjoin(
+                        group_member_profiles,
+                        (group_member_profiles.c.group_id == group_memberships.c.group_id) &
+                        (group_member_profiles.c.participant_id == group_memberships.c.participant_id)
+                    )
+                ).where(group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).mappings().all()
+                for i, m in enumerate(member_rows):
+                    members_data.append(dict(
+                        participantID=m['participant_id'],
+                        alias=m['alias'] or ('Alice (Lead)' if m['participant_id'] == group['organizer_id'] else f'Member {i + 1}'),
+                        isOrganizer=m['participant_id'] == group['organizer_id']
+                    ))
+            except Exception:
+                pass
         own_booking = self.checkout.view(participant_id, booking_id) if booking_id else None
         organizer = group['organizer_id'] == participant_id
         result = dict(id=group_id, name=group['name'], role='organizer' if organizer else 'member',
-            memberCount=count, workshopID=group['workshop_id'], myBooking=own_booking)
+            memberCount=count, workshopID=group['workshop_id'], myBooking=own_booking,
+            members=members_data)
         if organizer:
             result['inviteURL'] = f'{self.origin}/?invite={group["invite_token"]}'
         return result

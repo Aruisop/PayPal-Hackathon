@@ -810,6 +810,52 @@ class CollabBooking:
                 'policy': active['policy']
             }
 
+    def add_friend(self, organizer_id, group_id, alias='Friend'):
+        with self.store.engine.connect() as connection:
+            group = self._member_group(connection, organizer_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            if group['organizer_id'] != organizer_id:
+                raise BookingError('ORGANIZER_REQUIRED', 403)
+            active = self._get_active_purchase(connection, group_id)
+            if active and active['frozen_at']:
+                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
+            member_count = connection.execute(select(func.count()).select_from(group_memberships).where(
+                group_memberships.c.group_id == group_id)).scalar_one()
+            if member_count >= 4:
+                raise BookingError('GROUP_MAX_CAPACITY', 400)
+
+        friend_rec, _ = self.store.new_participant()
+        now = time.time()
+        with self.store.engine.begin() as connection:
+            connection.execute(insert(group_memberships).values(
+                id=identifier(), group_id=group_id, participant_id=friend_rec['id'], joined_at=now))
+        self.set_profile(friend_rec['id'], group_id, alias or f'Member {member_count + 1}')
+        return dict(success=True, participantID=friend_rec['id'], alias=alias or f'Member {member_count + 1}')
+
+    def simulate_authorizations(self, organizer_id, group_id):
+        with self.store.engine.begin() as connection:
+            group = self._member_group(connection, organizer_id, group_id)
+            if not group:
+                raise BookingError('GROUP_NOT_FOUND', 404)
+            active = self._get_active_purchase(connection, group_id)
+            if not active:
+                raise BookingError('NO_ACTIVE_BOOKING', 400)
+            now = time.time()
+            contribs = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
+            for c in contribs:
+                if c['state'] != 'AUTHORIZED':
+                    auth_id = f"AUTH-SANDBOX-{secrets.token_hex(4).upper()}"
+                    order_id = f"ORD-SANDBOX-{secrets.token_hex(4).upper()}"
+                    connection.execute(update(purchase_contributions).where(
+                        purchase_contributions.c.id == c['id']).values(
+                        order_id=order_id, authorization_id=auth_id,
+                        state='AUTHORIZED', consent_given_at=now))
+            connection.execute(update(shared_purchases).where(
+                shared_purchases.c.id == active['id']).values(state='FINALIZING'))
+        return self.view(organizer_id, group_id)
+
     def run_demo(self, participant_id, scenario='happy_path', domain='movie'):
         """High-novelty interactive judge showcase runner.
         Simulates multi-buyer agreement, AI constraint negotiation, integer-cent allocation,
