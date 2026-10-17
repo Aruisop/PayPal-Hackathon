@@ -673,26 +673,26 @@
           <p class="fine">Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to enable live Sandbox checkout.</p>
         </div>
         <div id="paypal-buttons"></div>
+        <div id="status" role="status" aria-live="polite"></div>
+        <a id="lesson" class="lesson-link btn btn-accent" style="margin-top:12px; display:inline-block;" hidden>Open your sample lesson</a>
         <div id="post-approval-recovery" class="card" hidden>
           <h3>Finish your payment</h3>
           <p id="post-approval-recovery-detail" class="fine">Your browser lost connection right after PayPal approved this order. Finish the capture here.</p>
           <button id="complete-payment" type="button" class="btn btn-primary">Complete payment now</button>
         </div>
-        <div id="payment-status" class="card" hidden>
-          <div class="status-header">
-            <span id="status-badge" class="badge"></span>
-            <span id="mode" class="fine"></span>
-          </div>
-          <p id="status-message"></p>
-          <div id="receipt" hidden>
-            <dl class="receipt-grid">
-              <dt>Order ID</dt><dd id="receipt-order"></dd>
-              <dt>Capture ID</dt><dd id="receipt-capture"></dd>
-              <dt>Amount</dt><dd id="receipt-amount"></dd>
-            </dl>
-          </div>
+        <div id="receipt" class="card" hidden>
+          <h3>Booking &amp; payment</h3>
+          <dl class="receipt-grid">
+            <dt>Booking</dt><dd id="booking-id"></dd>
+            <dt>Booking state</dt><dd id="booking-state"></dd>
+            <dt>Payment state</dt><dd id="attempt-state"></dd>
+            <dt>PayPal order</dt><dd id="order-id"></dd>
+            <dt>Capture</dt><dd id="capture-id"></dd>
+          </dl>
+          <p class="fine">Buyer approval alone does not unlock access. Unresolved payments must be checked before another attempt.</p>
           <button id="recheck" type="button" class="btn btn-secondary" hidden>Check with PayPal again</button>
         </div>
+        <p class="fine" style="margin-top:14px;">Test accounts and test money only. Sign in with your Personal Sandbox buyer account in the PayPal window.</p>
       </section>
     </div>
   </main>

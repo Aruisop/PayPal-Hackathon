@@ -1588,46 +1588,242 @@ let busy = false, sdkReady = false, renderVersion = 0;
 const bookings = new Map();
 const unresolved = new Set(['CREATING', 'CAPTURING', 'PENDING', 'UNKNOWN']);
 
-function price(w) { return (w.priceMinor / 100).toFixed(2); }
-function schedule(w) {
-  return `${new Date(w.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(w.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+function message(text, kind = '') {
+  const el = $('status') || $('collab-status-feed');
+  if (el) {
+    el.textContent = text;
+    el.className = kind;
+  }
 }
 
-function saveBooking(b) {
-  if (b?.workshopID) bookings.set(b.workshopID, b);
+function setBusy(value) {
+  busy = value;
+  document.querySelectorAll('[data-workshop]').forEach((button) => { button.disabled = value; });
+  if ($('recheck')) $('recheck').disabled = value;
+  if ($('complete-payment')) $('complete-payment').disabled = value;
+}
+
+function price(workshop) {
+  const val = workshop.value || (workshop.priceMinor ? (workshop.priceMinor / 100).toFixed(2) : '25.00');
+  return new Intl.NumberFormat('en-US', {style: 'currency', currency: workshop.currency || 'USD'}).format(Number(val));
+}
+
+function schedule(workshop) {
+  const format = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'});
+  return `${format.format(new Date(workshop.startsAt))} - ${format.format(new Date(workshop.endsAt))}`;
+}
+
+function state(booking) { return String(booking?.attemptState || 'NOT_STARTED').toUpperCase(); }
+
+function saveBooking(booking) {
+  if (!booking?.id) return;
+  bookings.set(booking.id, booking);
+  if (selectedWorkshop?.id === booking.workshopID) selectedBooking = booking;
+  renderBookings();
+}
+
+function defaultStatus(booking) {
+  if (!booking) return 'Pay with your Personal Sandbox account. Your booking is saved before checkout opens.';
+  if (booking.lessonURL) return 'Payment completed. Your sample lesson is now available.';
+  switch (state(booking)) {
+    case 'PENDING': return 'PayPal is processing the capture. Access remains locked; recheck the payment.';
+    case 'UNKNOWN': return 'Payment outcome is unresolved. Recheck with PayPal before another payment attempt.';
+    case 'CAPTURING': return 'Capture is in progress. Access remains locked until completion is confirmed.';
+    case 'CREATING': return 'Your saved payment attempt is being resolved. Recheck before continuing.';
+    case 'APPROVED': return 'Buyer approval received. Completed payment is not confirmed; access remains locked.';
+    case 'DENIED': case 'FAILED': return 'This payment attempt did not complete. Access remains locked.';
+    case 'CANCELLED': return 'Checkout was cancelled. Access remains locked.';
+    case 'AWAITING_APPROVAL': return 'Your order is saved. Continue checkout to approve and complete payment.';
+    default: return 'Payment is not confirmed. Access remains locked.';
+  }
+}
+
+function renderStatus() {
+  const booking = selectedBooking;
+  if ($('receipt')) $('receipt').hidden = !booking;
+  if ($('lesson')) {
+    $('lesson').hidden = !booking?.lessonURL;
+    $('lesson').removeAttribute('href');
+    if (booking?.lessonURL) $('lesson').href = booking.lessonURL;
+  }
+  if ($('recheck')) $('recheck').hidden = !booking || !!booking.lessonURL;
+  if ($('complete-payment')) $('complete-payment').hidden = !booking || booking.attemptState !== 'APPROVED' || !booking.orderID || !!booking.lessonURL;
+  if (booking) {
+    for (const [id, value] of Object.entries({
+      'booking-id': booking.id, 'booking-state': booking.bookingState,
+      'attempt-state': booking.attemptState, 'order-id': booking.orderID, 'capture-id': booking.captureID,
+    })) {
+      if ($(id)) $(id).textContent = value || 'Not recorded';
+    }
+  }
+  message(booking?.message || defaultStatus(booking), booking?.lessonURL ? 'success' : unresolved.has(state(booking)) ? 'warning' : '');
 }
 
 function renderBookings() {
   const container = $('bookings');
   if (!container) return;
-  container.innerHTML = [...bookings.values()].map((b) => `
-    <div class="card" style="margin-bottom:8px;">
-      <h4>${escapeHtml(b.title || b.workshopID)}</h4>
-      <span class="badge ${b.state === 'COMPLETED' ? 'badge-success' : 'badge-sandbox'}">${b.state}</span>
-    </div>
-  `).join('');
+  container.replaceChildren();
+  if (!bookings.size) {
+    const empty = document.createElement('p');
+    empty.className = 'fine';
+    empty.textContent = 'No bookings in this browser profile yet.';
+    container.append(empty);
+    return;
+  }
+  for (const booking of bookings.values()) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'booking-row';
+    button.dataset.workshop = booking.workshopID;
+    button.disabled = busy;
+    button.textContent = `${booking.workshopTitle || booking.workshopID} · ${booking.bookingState || 'SAVED'} / ${booking.attemptState || 'NOT_STARTED'}`;
+    button.addEventListener('click', () => selectWorkshop(booking.workshopID));
+    container.append(button);
+  }
 }
 
-function renderWorkshops() {
-  const container = $('workshops');
-  if (!container || !config?.workshops) return;
-  container.innerHTML = config.workshops.map((w) => `
-    <button type="button" class="workshop-card ${selectedWorkshop?.id === w.id ? 'selected' : ''}" data-workshop-id="${w.id}">
-      <h2>${escapeHtml(w.title)}</h2>
-      <p>${escapeHtml(w.description)}</p>
-      <p class="fine">${schedule(w)}</p>
-      <strong>$${price(w)} ${w.currency}</strong>
-    </button>
-  `).join('');
+async function refreshBooking(id) {
+  const booking = await api(`/api/bookings/${encodeURIComponent(id)}`);
+  saveBooking(booking);
+  if (selectedBooking?.id === id) renderStatus();
+  return booking;
+}
 
-  container.querySelectorAll('.workshop-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const wid = btn.dataset.workshopId;
-      selectedWorkshop = config.workshops.find((x) => x.id === wid);
-      $('checkout-heading').textContent = selectedWorkshop.title;
-      $('price').textContent = `$${price(selectedWorkshop)} USD`;
-      renderWorkshops();
-    });
+async function recover(error, bookingID) {
+  if (bookingID) {
+    try { await refreshBooking(bookingID); } catch {}
+  }
+  message(`${error.message || 'Checkout was interrupted.'} Recheck your saved payment before another attempt.`, 'error');
+}
+
+async function renderCheckout() {
+  const version = ++renderVersion;
+  if (paypalButtons) {
+    try { await paypalButtons.close(); } catch {}
+    paypalButtons = undefined;
+  }
+  if (version !== renderVersion) return;
+  const container = $('paypal-buttons');
+  if (!container) return;
+  container.replaceChildren();
+  if (!sdkReady || !selectedWorkshop || (selectedBooking &&
+      (!selectedBooking.canPay || selectedBooking.attemptState === 'APPROVED'))) return;
+  if (!window.paypal || !window.paypal.Buttons) return;
+
+  const workshopID = selectedWorkshop.id;
+  let bookingID = selectedBooking?.id;
+  const buttons = window.paypal.Buttons({
+    style: {layout: 'vertical', shape: 'rect', label: 'pay'},
+    onClick(data, actions) { return busy ? actions.reject() : actions.resolve(); },
+    async createOrder() {
+      setBusy(true);
+      message('Saving your booking and preparing PayPal checkout…');
+      try {
+        const booking = await api('/api/orders', {workshopID});
+        bookingID = booking.id;
+        saveBooking(booking);
+        renderStatus();
+        if (!booking.orderID || !booking.canPay) {
+          throw new Error(booking.message || 'This payment needs reconciliation before checkout can continue.');
+        }
+        message('Approve with your Personal Sandbox account. Approval alone does not grant lesson access.');
+        return booking.orderID;
+      } catch (error) {
+        await recover(error, bookingID);
+        setBusy(false);
+        throw error;
+      }
+    },
+    async onApprove(data) {
+      message('Approval received. Confirming capture with PayPal…');
+      try {
+        saveBooking(await api(`/api/orders/${encodeURIComponent(data.orderID)}/capture`, {}));
+        renderStatus();
+      } catch (error) {
+        await recover(error, bookingID);
+      } finally {
+        setBusy(false);
+        await renderCheckout();
+      }
+    },
+    async onCancel() {
+      try {
+        if (bookingID) {
+          saveBooking(await api(`/api/bookings/${encodeURIComponent(bookingID)}/cancel`, {}));
+          renderStatus();
+        } else {
+          message('Checkout closed before a booking was created.');
+        }
+      } catch (error) {
+        await recover(error, bookingID);
+      } finally {
+        setBusy(false);
+        await renderCheckout();
+      }
+    },
+    async onError(error) {
+      await recover(error, bookingID);
+      setBusy(false);
+      if (selectedBooking && !selectedBooking.canPay) await renderCheckout();
+    },
+  });
+  paypalButtons = buttons;
+  try {
+    await buttons.render('#paypal-buttons');
+  } catch {
+    if (version === renderVersion) message('PayPal checkout could not load. Refresh or recheck an existing payment.', 'error');
+  }
+}
+
+async function selectWorkshop(id) {
+  if (busy || !config?.workshops) return;
+  selectedWorkshop = config.workshops.find((workshop) => workshop.id === id);
+  if (!selectedWorkshop) return;
+  selectedBooking = [...bookings.values()].find((booking) => booking.workshopID === id);
+  if ($('checkout-heading')) $('checkout-heading').textContent = selectedWorkshop.title;
+  if ($('price')) $('price').textContent = price(selectedWorkshop);
+  if ($('schedule')) $('schedule').textContent = schedule(selectedWorkshop);
+  document.querySelectorAll('.workshop-card').forEach((card) => {
+    const active = card.dataset.workshop === id;
+    card.classList.toggle('selected', active);
+    card.setAttribute('aria-pressed', String(active));
+  });
+  renderStatus();
+  await renderCheckout();
+}
+
+function setupWorkshopActions() {
+  $('recheck')?.addEventListener('click', async () => {
+    if (busy || !selectedBooking) return;
+    const bookingID = selectedBooking.id;
+    setBusy(true);
+    message('Checking the saved payment with PayPal…');
+    try {
+      saveBooking(await api(`/api/bookings/${encodeURIComponent(bookingID)}/reconcile`, {}));
+      renderStatus();
+    } catch (error) {
+      await recover(error, bookingID);
+    } finally {
+      setBusy(false);
+      await renderCheckout();
+    }
+  });
+
+  $('complete-payment')?.addEventListener('click', async () => {
+    const booking = selectedBooking;
+    if (busy || !booking || booking.attemptState !== 'APPROVED' || !booking.orderID) return;
+    setBusy(true);
+    message('Checking the approved order and completing your payment…');
+    try {
+      const completed = await api(`/api/orders/${encodeURIComponent(booking.orderID)}/capture`, {});
+      saveBooking(completed);
+      renderStatus();
+    } catch (error) {
+      await recover(error, booking.id);
+    } finally {
+      setBusy(false);
+      await renderCheckout();
+    }
   });
 }
 
@@ -1641,6 +1837,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupRoomActions();
   setupGroupModals();
   setupPersonaSwitcher();
+  setupWorkshopActions();
 
   // Audio Toggle
   $('audio-toggle-btn')?.addEventListener('click', () => {
@@ -1662,6 +1859,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('mode').textContent = config.configured ? 'Sandbox connected · test money only' : 'Sandbox checkout not configured';
     $('timezone').textContent = `Schedules shown in your browser timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.`;
     $('discover-tz-notice').textContent = `Schedules shown in your browser timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone}).`;
+
+    // Render workshops
+    const workshopContainer = $('workshops');
+    if (workshopContainer && config.workshops) {
+      workshopContainer.replaceChildren();
+      for (const workshop of config.workshops) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'workshop-card';
+        card.dataset.workshop = workshop.id;
+        card.setAttribute('aria-pressed', 'false');
+        const title = document.createElement('h2'); title.textContent = workshop.title;
+        const description = document.createElement('p'); description.textContent = workshop.description;
+        const time = document.createElement('p'); time.className = 'fine'; time.textContent = schedule(workshop);
+        const amount = document.createElement('strong'); amount.textContent = `${price(workshop)} ${workshop.currency}`;
+        card.append(title, description, time, amount);
+        card.addEventListener('click', () => selectWorkshop(workshop.id));
+        workshopContainer.append(card);
+      }
+      if (config.workshops.length > 0) {
+        await selectWorkshop(config.workshops[0].id);
+      }
+    }
+
+    // Load PayPal JS SDK if configured
+    if (config.configured && config.clientID) {
+      const script = document.createElement('script');
+      script.src = 'https://www.paypal.com/sdk/js?' + new URLSearchParams({
+        'client-id': config.clientID, currency: 'USD', intent: 'capture', components: 'buttons',
+      });
+      script.onload = async () => {
+        sdkReady = true;
+        await renderCheckout();
+      };
+      script.onerror = () => {
+        message('PayPal SDK could not load. Check your connection or client ID.', 'error');
+      };
+      document.head.append(script);
+    }
 
     // Load dynamic catalog & groups
     await fetchCatalogOffers();
