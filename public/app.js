@@ -1001,12 +1001,11 @@ function setupRoomActions() {
       SOUNDS.success();
       await loadGroupBookingState();
       renderMemberAuthList();
-      setCollabStatus('Pre-flight verified! Cash holds reserved autonomously in PayPal Sandbox (intent="AUTHORIZE").');
+      setCollabStatus('Demo simulation complete: all simulated balances cover their shares. No PayPal calls were made.');
       appendBotChatMessage(`
-        <strong>Autonomous Cash Holds Reserved:</strong><br>
-        Open banking pre-flight verified sufficient liquidity across all linked bank accounts.<br>
-        PayPal Sandbox holds placed under <code>intent="AUTHORIZE"</code> directly against each collaborator's instrument.<br>
-        Status: <strong>FINALIZING</strong>. Ready to confirm booking and issue passes.
+        <strong>Simulated Pre-Flight Passed (demo data):</strong><br>
+        Every simulated balance covers its share. These are simulated holds only; no PayPal authorization was created.<br>
+        For a real Sandbox hold, each member uses <strong>Authorize Your Share</strong>.
       `);
     } catch (err) {
       alert(`Pre-flight reservation failed: ${err.message}`);
