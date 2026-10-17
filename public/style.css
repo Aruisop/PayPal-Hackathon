@@ -3425,6 +3425,123 @@ input[type="text"]:focus, textarea:focus {
   color: var(--text-muted);
 }
 
+/* ========================================================================= */
+/* WORKSHOPS & INDIVIDUAL PAYPAL CHECKOUT STYLES                            */
+/* ========================================================================= */
+.workshop-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 48px;
+  max-width: 1200px;
+  margin: 30px auto;
+  padding: 0 24px;
+}
+
+.checkout {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  padding: 28px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  position: sticky;
+  top: 90px;
+  align-self: start;
+}
+
+.checkout h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 10px 0;
+  color: #fff;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 18px 0;
+}
+
+.price-row .price {
+  font-size: 24px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: #38bdf8;
+}
+
+#paypal-buttons {
+  margin: 16px 0;
+  min-height: 45px;
+  width: 100%;
+}
+
+#status {
+  padding: 14px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+
+#status.error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+#status.success {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.workshop-card {
+  display: block;
+  width: 100%;
+  padding: 20px;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  color: inherit;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: all 0.2s ease;
+}
+
+.workshop-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-1px);
+}
+
+.workshop-card.selected {
+  border: 2px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.booking-row {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  margin: 6px 0;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.booking-row:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+
 
 
 

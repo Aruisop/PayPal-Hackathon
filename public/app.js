@@ -313,6 +313,8 @@ function switchTab(tab) {
     }
   } else if (tab === 'workshop') {
     renderWorkshops();
+    renderStatus();
+    renderCheckout();
   }
 }
 
@@ -1682,6 +1684,28 @@ function renderBookings() {
   }
 }
 
+function renderWorkshops() {
+  const container = $('workshops');
+  if (!container || !config?.workshops) return;
+  container.replaceChildren();
+  for (const workshop of config.workshops) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'workshop-card';
+    card.dataset.workshop = workshop.id;
+    const isSelected = selectedWorkshop?.id === workshop.id;
+    card.setAttribute('aria-pressed', String(isSelected));
+    if (isSelected) card.classList.add('selected');
+    const title = document.createElement('h2'); title.textContent = workshop.title;
+    const description = document.createElement('p'); description.textContent = workshop.description;
+    const time = document.createElement('p'); time.className = 'fine'; time.textContent = schedule(workshop);
+    const amount = document.createElement('strong'); amount.textContent = `${price(workshop)} ${workshop.currency}`;
+    card.append(title, description, time, amount);
+    card.addEventListener('click', () => selectWorkshop(workshop.id));
+    container.append(card);
+  }
+}
+
 async function refreshBooking(id) {
   const booking = await api(`/api/bookings/${encodeURIComponent(id)}`);
   saveBooking(booking);
@@ -1706,12 +1730,45 @@ async function renderCheckout() {
   const container = $('paypal-buttons');
   if (!container) return;
   container.replaceChildren();
-  if (!sdkReady || !selectedWorkshop || (selectedBooking &&
+  if (!selectedWorkshop || (selectedBooking &&
       (!selectedBooking.canPay || selectedBooking.attemptState === 'APPROVED'))) return;
-  if (!window.paypal || !window.paypal.Buttons) return;
 
   const workshopID = selectedWorkshop.id;
   let bookingID = selectedBooking?.id;
+
+  if (!sdkReady || !window.paypal || !window.paypal.Buttons) {
+    const directBtn = document.createElement('button');
+    directBtn.type = 'button';
+    directBtn.id = 'direct-paypal-button';
+    directBtn.className = 'btn btn-primary';
+    directBtn.style.cssText = 'width:100%; padding:14px; background:#0070ba; color:#fff; font-weight:700; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:10px; font-size:15px; box-shadow:0 4px 12px rgba(0,112,186,0.3); cursor:pointer;';
+    directBtn.innerHTML = `
+      <svg style="width:20px; height:20px; fill:currentColor;" viewBox="0 0 24 24"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.002.433 5.378.09 5.827.09h7.52c3.553 0 6.257 1.849 5.845 5.807-.373 3.585-2.617 5.753-5.836 5.753h-2.14l-1.076 6.822a.64.64 0 0 1-.634.542l-2.43-.004v-.004z"></path></svg>
+      <span>Pay with PayPal Sandbox (${price(selectedWorkshop)})</span>
+    `;
+    directBtn.addEventListener('click', async () => {
+      setBusy(true);
+      message('Saving booking and initiating PayPal Sandbox checkout…');
+      try {
+        const booking = await api('/api/orders', { workshopID });
+        bookingID = booking.id;
+        saveBooking(booking);
+        renderStatus();
+        if (booking.approvalURL) {
+          window.location.href = booking.approvalURL;
+        } else {
+          message(`Order ${booking.orderID} initiated! Approve in PayPal to complete.`);
+        }
+      } catch (err) {
+        await recover(err, bookingID);
+      } finally {
+        setBusy(false);
+        renderStatus();
+      }
+    });
+    container.append(directBtn);
+    return;
+  }
   const buttons = window.paypal.Buttons({
     style: {layout: 'vertical', shape: 'rect', label: 'pay'},
     onClick(data, actions) { return busy ? actions.reject() : actions.resolve(); },
@@ -1861,26 +1918,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('discover-tz-notice').textContent = `Schedules shown in your browser timezone (${Intl.DateTimeFormat().resolvedOptions().timeZone}).`;
 
     // Render workshops
-    const workshopContainer = $('workshops');
-    if (workshopContainer && config.workshops) {
-      workshopContainer.replaceChildren();
-      for (const workshop of config.workshops) {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'workshop-card';
-        card.dataset.workshop = workshop.id;
-        card.setAttribute('aria-pressed', 'false');
-        const title = document.createElement('h2'); title.textContent = workshop.title;
-        const description = document.createElement('p'); description.textContent = workshop.description;
-        const time = document.createElement('p'); time.className = 'fine'; time.textContent = schedule(workshop);
-        const amount = document.createElement('strong'); amount.textContent = `${price(workshop)} ${workshop.currency}`;
-        card.append(title, description, time, amount);
-        card.addEventListener('click', () => selectWorkshop(workshop.id));
-        workshopContainer.append(card);
-      }
-      if (config.workshops.length > 0) {
-        await selectWorkshop(config.workshops[0].id);
-      }
+    renderWorkshops();
+    if (config.workshops && config.workshops.length > 0) {
+      await selectWorkshop(config.workshops[0].id);
     }
 
     // Load PayPal JS SDK if configured
