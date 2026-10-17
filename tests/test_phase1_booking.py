@@ -8,7 +8,7 @@ from sqlalchemy import insert, inspect, select
 from collab_booking import split_equal_cents
 from server import create_app
 from storage import (Store, attempts, bookings, catalog_offers, catalog_resources,
-                     entitlements, group_member_profiles, group_memberships,
+                     entitlements, group_member_profiles, group_memberships, money,
                      participants, purchase_contributions, shared_purchases,
                      versions, workshop_groups, workshops)
 from test_workshop_slice import FakePayPal
@@ -91,7 +91,7 @@ class Phase1BookingTests(unittest.TestCase):
     def test_client_tampering_of_price_or_share_is_ignored(self):
         group_id = self.create_group_with_member()
         offers = self.organizer.get('/api/catalog/offers?domain=movie').json['offers']
-        target_offer = offers[0]
+        target_offer = next((o for o in offers if o['id'] == 'movie-cosmic-odyssey-fri'), offers[0])
         seat_ids = [target_offer['resources'][0]['id'], target_offer['resources'][1]['id']]
 
         # Client attempts tampering price to $0.01
@@ -105,7 +105,7 @@ class Phase1BookingTests(unittest.TestCase):
         # Server must enforce authoritative catalog price: 1600 cents * 2 members = 3200 cents
         expected_total = target_offer['priceMinor'] * 2
         self.assertEqual(quote_resp.json['totalCents'], expected_total)
-        self.assertEqual(quote_resp.json['totalValue'], '32.00')
+        self.assertEqual(quote_resp.json['totalValue'], money(expected_total))
 
     def test_only_organizer_can_freeze_roster(self):
         group_id = self.create_group_with_member()
@@ -204,7 +204,7 @@ class Phase1BookingTests(unittest.TestCase):
         self.post(self.member, f'/api/groups/{group_id}/profile', {'alias': 'Bob'})
 
         offers = self.organizer.get('/api/catalog/offers?domain=movie').json['offers']
-        target_offer = offers[0]
+        target_offer = next((o for o in offers if o['id'] == 'movie-cosmic-odyssey-fri'), offers[0])
         seat_ids = [target_offer['resources'][0]['id'], target_offer['resources'][1]['id']]
 
         self.post(self.organizer, f'/api/groups/{group_id}/freeze', {
@@ -216,7 +216,7 @@ class Phase1BookingTests(unittest.TestCase):
         member_view = self.member.get(f'/api/groups/{group_id}/booking').json
         self.assertTrue(member_view['hasBooking'])
         self.assertEqual(member_view['myShare']['alias'], 'Bob')
-        self.assertEqual(member_view['myShare']['shareValue'], '16.00')
+        self.assertEqual(member_view['myShare']['shareValue'], money(target_offer['priceMinor']))
         self.assertFalse(member_view['isOrganizer'])
 
         # Progress shows coarse progress only

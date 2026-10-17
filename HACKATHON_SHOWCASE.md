@@ -22,29 +22,34 @@ If any participant's payment fails at capture time, GroupPay's distributed saga 
 
 ---
 
-## 🚀 1-Click Interactive Judge Demo (60-Second Walkthrough)
+## 🚀 1-Click Interactive Judge Demo & Developer Suite
 
 To ensure evaluators can experience the full multi-party workflow without the friction of opening multiple incognito browser windows, GroupPay includes an interactive **Hackathon Evaluation Center** built directly into the UI at `http://localhost:8000`:
 
-1. **⚡ Run 3-Person Movie Booking (Alice, Bob & Charlie)**:
+1. **⚡ 1-Click Fast Actions (Cinema & Travel Excursion)**:
    - Simulates 3 participants joining the group.
-   - Enters natural language preferences:
-     - Alice: *"Sci-Fi movie on Friday or Saturday evening, budget under $20"*
-     - Bob: *"Cosmic Odyssey on Friday around 7pm, fine up to $22"*
-     - Charlie: *"Friday night sci-fi after 6pm, vegan snacks, budget under $18"*
-   - AI mediates consensus and matches *Cosmic Odyssey (70mm IMAX)* at $16.00/person ($48.00 total).
-   - Locks adjacent cinema seats `[Seat A1, Seat A2, Seat A3]` with a 15-minute lease timer.
-   - Executes independent PayPal Sandbox authorizations (`intent="AUTHORIZE"`).
+   - Reconciles natural language constraints via Gemini AI with 12 safety evaluation gates.
+   - Exact integer cent partition ($16.00 splits or $33.34 remainder allocation).
+   - Independent PayPal Sandbox authorizations (`intent="AUTHORIZE"`).
    - Fenced sequential captures complete, and 3 private passes with dynamic SVG QR codes are issued!
-2. **💥 Chaos Test: Card Decline & Distributed Compensatory Rollback**:
+2. **💥 Chaos Engineering Lab: Card Decline & Distributed Compensatory Rollback**:
    - Injects a simulated card decline (422 `INSTRUMENT_DECLINED`) on Charlie during capture!
-   - Live telemetry visualizes the automated saga rollback:
+   - Live telemetry and interactive DAG visualize the automated saga rollback:
      - Alice (Capture #1) ↩️: Automatically refunded via PayPal API (`/v2/payments/captures/.../refund`)
      - Bob (Capture #2) ↩️: Automatically refunded via PayPal API
      - Charlie ❌: PayPal authorization voided (`/v2/payments/authorizations/.../void`)
-     - Catalog Inventory 🎟️: Cinema seats A1, A2, A3 restored to `FREE` in catalog
-3. **🔬 Integrity & Invariants Inspector**:
-   - Deep-dive telemetry drawer verifying database transaction fencing, zero connection leaks, and cryptographic lease tokens.
+     - Catalog Inventory 🎟️: Cinema seats A1, A2, A3 unreserved and restored to `FREE` in catalog
+3. **🎭 Multi-Persona Perspective Switcher**:
+   - Switch perspectives on the fly between **Alice (Lead)**, **Bob (Member)**, and **Charlie (Member)**.
+   - The interactive seat map, in-chat authorization button, and private wallet pass dynamically update to display that participant's isolated private data.
+4. **📱 3-Way Real-Time Multi-Device Split Screen**:
+   - Click **"3-Way Live"** to witness 3 mobile devices side-by-side coordinating synchronously in real time on a single screen!
+5. **🛡️ Gemini AI Guardrails & Prompt Injection Sandbox**:
+   - Test adversarial attack vectors ("Price Zero Override", "System Prompt Jailbreak", "Privilege Escalation", "Currency Smuggling") and inspect real-time intercepted schemas.
+6. **🎟️ Smartphone Pass Scanner Simulator & Cryptographic Proof**:
+   - Interactive camera laser sweep scanning the SVG QR code and validating the SHA256 checksum against immutable server ledger records.
+7. **🔊 Tactile Web Audio API Engine**:
+   - Native synthesized sound feedback for payment authorizations, arpeggio ticket minting, and rollback alerts with zero external MP3 dependencies.
 
 ---
 
