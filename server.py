@@ -1,4 +1,4 @@
-"""Persistent individual workshop checkout, served with Waitress."""
+"""GroupPay HTTP boundary and explicit migration/recovery commands."""
 import argparse
 import hmac
 import os
@@ -6,14 +6,26 @@ from pathlib import Path
 from urllib.parse import urlparse
 from flask import Flask, g, jsonify, make_response, request, send_from_directory
 from markupsafe import escape
-from ai_planner import AIError
+from ai_planner import AIError, PreferenceInterpreter
 from checkout import Checkout, CheckoutError
 from collab_booking import BookingError, CollabBooking
 from groups import GroupError, Groups
 from payments import PayPal, PayPalError
+from room import Room
+from rescue import PlanRescue
 from storage import Store
+from ticketing import ticket_svg
 
 ROOT = Path(__file__).resolve().parent
+
+
+def database_url():
+    value = os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db')
+    if value.startswith('sqlite:///'):
+        path = value[len('sqlite:///'):]
+        if path != ':memory:' and not Path(path).is_absolute():
+            return 'sqlite:///' + (ROOT / path).as_posix()
+    return value
 
 def load_env():
     path = ROOT / '.env'
@@ -25,9 +37,9 @@ def load_env():
 
 def create_app(config=None, paypal=None):
     app = Flask(__name__, static_folder=None)
-    app.config.update(DATABASE_URL=os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db'),
+    app.config.update(DATABASE_URL=database_url(),
         APP_ENV=os.getenv('APP_ENV', 'development'), APP_ORIGIN=os.getenv('APP_ORIGIN', 'http://localhost:8000').rstrip('/'),
-        COOKIE_SECURE=os.getenv('COOKIE_SECURE', 'false').lower() == 'true', MAX_CONTENT_LENGTH=4096)
+        COOKIE_SECURE=os.getenv('COOKIE_SECURE', 'false').lower() == 'true', MAX_CONTENT_LENGTH=16384)
     if config:
         app.config.update(config)
     if app.config['APP_ENV'] == 'production':
@@ -37,20 +49,22 @@ def create_app(config=None, paypal=None):
             raise RuntimeError('Production requires HTTPS APP_ORIGIN and COOKIE_SECURE=true')
     store = Store(app.config['DATABASE_URL'])
     if app.config['APP_ENV'] != 'production':
-        store.migrate(target=3)
+        store.migrate(target=5)
         store.seed()
     else:
         from sqlalchemy import select
         from storage import versions
         with store.engine.connect() as connection:
-            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() not in (2, 3):
+            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 5:
                 raise RuntimeError('Run python server.py migrate before starting')
     adapter = paypal or PayPal(os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''),
                                os.getenv('PAYPAL_MERCHANT_ID', ''))
     checkout = Checkout(store, adapter)
     groups = Groups(store, checkout, app.config['APP_ORIGIN'])
     booking = CollabBooking(store, app.config['APP_ORIGIN'], adapter)
-    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter, booking=booking)
+    room = Room(store)
+    rescue = PlanRescue(store)
+    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter, booking=booking, room=room)
 
     @app.before_request
     def authorize():
@@ -119,13 +133,45 @@ def create_app(config=None, paypal=None):
         res.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         return res
 
+    @app.get('/demo.js')
+    def simulation_javascript():
+        return send_from_directory(ROOT / 'public', 'demo.js')
+
+    @app.get('/room.js')
+    def room_javascript():
+        return send_from_directory(ROOT / 'public', 'room.js')
+
+    @app.get('/ai.js')
+    def ai_javascript():
+        return send_from_directory(ROOT / 'public', 'ai.js')
+
+    @app.get('/discovery.js')
+    @app.get('/guide.js')
+    def presentation_javascript():
+        return send_from_directory(ROOT / 'public', request.path[1:])
+
+    @app.get('/ai-worker.mjs')
+    def ai_worker():
+        response = make_response(send_from_directory(ROOT / 'public', 'ai-worker.mjs'))
+        response.mimetype = 'text/javascript'
+        return response
+
+    @app.post('/api/planning/preview')
+    def preview_preference():
+        body = request.get_json()
+        if not isinstance(body, dict):
+            raise AIError('INVALID_REQUEST')
+        interpretation = PreferenceInterpreter().interpret(body.get('rawText'), user_tz=body.get('userTz', 'UTC'))
+        return jsonify(scope='interpretation_preview', saved=False, interpretation=interpretation)
+
     @app.get('/api/config')
     def configuration():
         token = None
         if not g.participant:
             g.participant, token = store.new_participant()
-        response = jsonify(clientID=adapter.client_id, configured=adapter.configured,
-            csrfToken=g.participant['csrf_token'], workshops=store.catalog(), bookings=checkout.list(g.participant['id']))
+        response = jsonify(clientID=adapter.client_id, configured=adapter.configured, participantID=g.participant['id'],
+            csrfToken=g.participant['csrf_token'], workshops=store.catalog(), bookings=checkout.list(g.participant['id']),
+            planningMode='gemini' if os.getenv('GEMINI_API_KEY', '').strip() else 'local')
         if token:
             response.set_cookie('workshop_session', token, max_age=30 * 86400, httponly=True,
                                 secure=app.config['COOKIE_SECURE'], samesite='Strict', path='/')
@@ -153,6 +199,23 @@ def create_app(config=None, paypal=None):
     def my_group(group_id):
         return jsonify(groups.view(g.participant['id'], group_id))
 
+    @app.get('/api/groups/<group_id>/room')
+    def group_room(group_id):
+        return jsonify(room.view(g.participant['id'], group_id, request.args.get('after')))
+
+    @app.post('/api/groups/<group_id>/rescue')
+    def rescue_plan(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict):
+            raise AIError('INVALID_REQUEST')
+        return jsonify(rescue.suggest(g.participant['id'], group_id, body.get('domain', 'movie')))
+
+    @app.post('/api/groups/<group_id>/messages')
+    def send_room_message(group_id):
+        body = request.get_json()
+        return jsonify(room.post_message(g.participant['id'], group_id,
+            body.get('text') if isinstance(body, dict) else None))
+
     @app.post('/api/groups/<group_id>/selection')
     def select_group_workshop(group_id):
         body = request.get_json()
@@ -167,9 +230,9 @@ def create_app(config=None, paypal=None):
     @app.post('/api/groups/<group_id>/profile')
     def set_group_profile(group_id):
         body = request.get_json()
-        if not isinstance(body, dict):
+        if not isinstance(body, dict) or type(body.get('shareProgress', False)) is not bool:
             raise BookingError('INVALID_REQUEST', 400)
-        return jsonify(booking.set_profile(g.participant['id'], group_id, body.get('alias', '')))
+        return jsonify(booking.set_profile(g.participant['id'], group_id, body.get('alias', ''), body.get('shareProgress', False)))
 
     @app.post('/api/groups/<group_id>/quote')
     def get_group_quote(group_id):
@@ -200,6 +263,10 @@ def create_app(config=None, paypal=None):
             raise BookingError('PREFERENCE_TEXT_REQUIRED', 400)
         return jsonify(booking.submit_preference(g.participant['id'], group_id, body.get('rawText'),
                                                  body.get('userTz', 'UTC'), body.get('referenceDate')))
+
+    @app.get('/api/groups/<group_id>/preferences')
+    def get_group_preference(group_id):
+        return jsonify(booking.planning.get_preference(g.participant['id'], group_id))
 
     @app.post('/api/groups/<group_id>/preferences/confirm')
     def confirm_group_preference(group_id):
@@ -233,38 +300,34 @@ def create_app(config=None, paypal=None):
     def finalize_group_booking(group_id):
         return jsonify(booking.finalize_booking(g.participant['id'], group_id))
 
-    @app.post('/api/groups/<group_id>/members/add-demo')
-    def add_demo_group_member(group_id):
-        body = request.get_json() or {}
-        alias = body.get('alias', 'Friend')
-        return jsonify(booking.add_friend(g.participant['id'], group_id, alias))
-
-    @app.post('/api/groups/<group_id>/simulate-authorizations')
-    def simulate_group_authorizations(group_id):
-        return jsonify(booking.simulate_authorizations(g.participant['id'], group_id))
-
-    @app.get('/api/groups/<group_id>/liquidity-profiles')
-    def get_group_liquidity_profiles(group_id):
-        return jsonify(booking.get_liquidity_profiles(g.participant['id'], group_id))
-
-    @app.post('/api/groups/<group_id>/preflight-reserve')
-    def autonomous_preflight_and_reserve(group_id):
-        body = request.get_json() or {}
-        simulate_deficit = bool(body.get('simulateDeficit', False))
-        result = booking.autonomous_preflight_and_reserve(g.participant['id'], group_id, simulate_deficit=simulate_deficit)
-        status_code = 422 if result.get('status') == 'PREFLIGHT_FAILED' else 200
-        return jsonify(result), status_code
+    @app.post('/api/groups/<group_id>/recover')
+    def recover_group_booking(group_id):
+        return jsonify(booking.payments.recover(g.participant['id'], group_id))
 
     @app.get('/api/groups/<group_id>/ticket')
     def get_group_ticket(group_id):
         return jsonify(booking.get_my_ticket(g.participant['id'], group_id))
 
-    @app.post('/api/demo/run')
-    def run_judge_demo():
-        body = request.get_json() or {}
-        scenario = body.get('scenario', 'happy_path')
-        domain = body.get('domain', 'movie')
-        return jsonify(booking.run_demo(g.participant['id'], scenario=scenario, domain=domain))
+    @app.get('/api/groups/<group_id>/ticket/qr')
+    def get_group_ticket_qr(group_id):
+        ticket = booking.get_my_ticket(g.participant['id'], group_id)
+        response = make_response(ticket_svg(ticket['ticketCode']))
+        response.mimetype = 'image/svg+xml'
+        return response
+
+    @app.post('/api/groups/<group_id>/ticket/check')
+    def check_group_ticket(group_id):
+        ticket = booking.get_my_ticket(g.participant['id'], group_id)
+        body = request.get_json()
+        code = body.get('ticketCode') if isinstance(body, dict) else None
+        if not isinstance(code, str) or len(code) > 256:
+            raise BookingError('TICKET_CODE_REQUIRED', 400)
+        valid = hmac.compare_digest(code.encode('utf-8'), ticket['ticketCode'].encode('utf-8'))
+        result = dict(valid=valid, scope='private-demonstration-ticket')
+        if valid:
+            result.update(ticketID=ticket['ticketID'], offeringTitle=ticket['title'],
+                          assignedResource=ticket['assignedResource'])
+        return jsonify(result)
 
     @app.get('/api/bookings/<booking_id>')
     def my_booking(booking_id):
@@ -314,13 +377,17 @@ def create_app(config=None, paypal=None):
 if __name__ == '__main__':
     load_env()
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', nargs='?', choices=['serve', 'migrate'], default='serve')
+    parser.add_argument('command', nargs='?', choices=['serve', 'migrate', 'recover'], default='serve')
     args = parser.parse_args()
     if args.command == 'migrate':
-        store = Store(os.getenv('DATABASE_URL', 'sqlite:///instance/workshops.db'))
-        store.migrate(target=3)
+        store = Store(database_url())
+        store.migrate(target=5)
         store.seed()
-        print('Database revision 3 applied; catalog seeded if empty. No database URL displayed.')
+        print('Database revision 5 applied; catalog seeded if empty. No database URL displayed.')
+    elif args.command == 'recover':
+        application = create_app()
+        result = application.extensions['booking'].payments.recover_pending()
+        print('Recovery pass:', result)
     else:
         from waitress import serve
         application = create_app()

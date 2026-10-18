@@ -40,24 +40,24 @@ class Groups:
                     workshop_groups.c.invite_token == invite_token)).scalar()
                 if not group_id:
                     raise GroupError('INVITE_NOT_FOUND', 404)
+                connection.execute(update(workshop_groups).where(workshop_groups.c.id == group_id).values(id=group_id))
                 existing = connection.execute(select(group_memberships.c.id).where(
                     group_memberships.c.group_id == group_id,
                     group_memberships.c.participant_id == participant_id)).scalar()
                 if not existing:
-                    # Enforce F03: Joining closes at roster freeze
-                    try:
-                        from storage import shared_purchases
-                        frozen = connection.execute(select(shared_purchases.c.id).where(
-                            shared_purchases.c.group_id == group_id,
-                            shared_purchases.c.frozen_at.is_not(None),
-                            shared_purchases.c.state.in_(['AWAITING_AUTHORIZATIONS', 'FINALIZING', 'CONFIRMED'])
-                        )).scalar()
-                        if frozen:
-                            raise GroupError('ROSTER_FROZEN', 409)
-                    except GroupError:
-                        raise
-                    except Exception:
-                        pass
+                    from storage import shared_purchases
+                    frozen = connection.execute(select(shared_purchases.c.id).where(
+                        shared_purchases.c.group_id == group_id,
+                        shared_purchases.c.frozen_at.is_not(None),
+                        shared_purchases.c.state.in_(['AWAITING_AUTHORIZATIONS', 'FINALIZING',
+                            'CONFIRMED', 'RECOVERY_REQUIRED', 'CANCELLING'])
+                    )).scalar()
+                    if frozen:
+                        raise GroupError('ROSTER_FROZEN', 409)
+                    count = connection.execute(select(func.count()).select_from(group_memberships).where(
+                        group_memberships.c.group_id == group_id)).scalar_one()
+                    if count >= 4:
+                        raise GroupError('GROUP_MAX_CAPACITY', 409)
                     connection.execute(insert(group_memberships).values(id=identifier(), group_id=group_id,
                         participant_id=participant_id, joined_at=time.time()))
         except IntegrityError:
@@ -89,33 +89,26 @@ class Groups:
                 booking_id = connection.execute(select(bookings.c.id).where(
                     bookings.c.participant_id == participant_id,
                     bookings.c.workshop_id == group['workshop_id'])).scalar()
-            members_data = []
-            try:
-                from storage import group_member_profiles
-                member_rows = connection.execute(select(
-                    group_memberships.c.participant_id,
-                    group_memberships.c.joined_at,
-                    group_member_profiles.c.alias
-                ).select_from(
-                    group_memberships.outerjoin(
-                        group_member_profiles,
-                        (group_member_profiles.c.group_id == group_memberships.c.group_id) &
-                        (group_member_profiles.c.participant_id == group_memberships.c.participant_id)
-                    )
-                ).where(group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).mappings().all()
-                for i, m in enumerate(member_rows):
-                    members_data.append(dict(
-                        participantID=m['participant_id'],
-                        alias=m['alias'] or ('Alice (Lead)' if m['participant_id'] == group['organizer_id'] else f'Member {i + 1}'),
-                        isOrganizer=m['participant_id'] == group['organizer_id']
-                    ))
-            except Exception:
-                pass
+            from storage import group_member_profiles
+            member_rows = connection.execute(select(
+                group_memberships.c.participant_id, group_member_profiles.c.alias,
+                group_member_profiles.c.consent_coarse_progress
+            ).select_from(group_memberships.outerjoin(group_member_profiles,
+                (group_member_profiles.c.group_id == group_memberships.c.group_id) &
+                (group_member_profiles.c.participant_id == group_memberships.c.participant_id)
+            )).where(group_memberships.c.group_id == group_id).order_by(
+                group_memberships.c.joined_at, group_memberships.c.id)).mappings().all()
+            members_data = [dict(participantID=row['participant_id'],
+                alias=(row['alias'] if row['participant_id'] == participant_id or row['consent_coarse_progress'] else None)
+                    or ('Organizer' if row['participant_id'] == group['organizer_id'] else f'Member {index + 1}'),
+                isOrganizer=row['participant_id'] == group['organizer_id']) for index, row in enumerate(member_rows)]
+            profile = next(row for row in member_rows if row['participant_id'] == participant_id)
         own_booking = self.checkout.view(participant_id, booking_id) if booking_id else None
         organizer = group['organizer_id'] == participant_id
         result = dict(id=group_id, name=group['name'], role='organizer' if organizer else 'member',
             memberCount=count, workshopID=group['workshop_id'], myBooking=own_booking,
-            members=members_data)
+            members=members_data, myProfile=dict(alias=profile['alias'] or '',
+                shareProgress=bool(profile['consent_coarse_progress'])))
         if organizer:
             result['inviteURL'] = f'{self.origin}/?invite={group["invite_token"]}'
         return result

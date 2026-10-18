@@ -13,7 +13,7 @@ git fetch origin
 git switch -c fix/slice1-describe-the-problem origin/slice/1-persistent-workshop-checkout
 ```
 
-Use an approved base for later work; update `docs/BRANCHES.md` whenever a new slice is delivered or acceptance changes. AI implementation remains unapproved. Preserve unfinished work before switching branches; never discard someone else's changes to get a clean checkout.
+Use an approved base for later work; update `docs/BRANCHES.md` whenever a new slice is delivered or acceptance changes. The current user authorized Slice 3 integration, a guided UI redesign and optional on-device AI; see README and Aarya_changes.md for current scope. Preserve unfinished work before switching branches; never discard someone else's changes to get a clean checkout.
 
 ## Keep changes reviewable
 

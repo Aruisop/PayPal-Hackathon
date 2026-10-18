@@ -149,6 +149,41 @@ group_recovery_tasks = Table('group_recovery_tasks', metadata,
     Column('last_error', String(200)),
     Column('updated_at', Float, nullable=False))
 
+# Revision 4 is additive. Historical Slice 3 records are retained for review;
+# they cannot establish payment evidence for the corrected coordinator.
+group_workflows = Table('group_workflows', metadata,
+    Column('purchase_id', ForeignKey('shared_purchases.id'), primary_key=True),
+    Column('lease_token', String(64)),
+    Column('lease_until', Float, nullable=False, default=0),
+    Column('merchant_id', String(64), nullable=False, default=''),
+    Column('cancel_requested', Integer, nullable=False, default=0),
+    Column('finalization_requested', Integer, nullable=False, default=0),
+    Column('review_required', Integer, nullable=False, default=0),
+    Column('error', String(100)),
+    Column('updated_at', Float, nullable=False))
+
+group_operations = Table('group_operations', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('purchase_id', ForeignKey('shared_purchases.id'), nullable=False),
+    Column('contribution_id', ForeignKey('purchase_contributions.id'), nullable=False),
+    Column('kind', String(20), nullable=False),
+    Column('request_id', String(40), unique=True, nullable=False),
+    Column('target_id', String(64)),
+    Column('provider_id', String(64)),
+    Column('state', String(20), nullable=False),
+    Column('error', String(100)),
+    Column('started_at', Float, nullable=False),
+    Column('updated_at', Float, nullable=False),
+    UniqueConstraint('contribution_id', 'kind', name='uq_contribution_operation'))
+
+# Revision 5: shared discussion is independent of private preferences/payments.
+room_messages = Table('room_messages', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('group_id', ForeignKey('workshop_groups.id'), nullable=False, index=True),
+    Column('participant_id', ForeignKey('participants.id'), nullable=False),
+    Column('text', String(1000), nullable=False),
+    Column('created_at', Float, nullable=False))
+
 
 def identifier():
     return secrets.token_hex(16)
@@ -200,6 +235,8 @@ class Store:
     def migrate(self, target=2):
         # Target defaults to 2 to preserve Slice 2 backward compatibility contract.
         from sqlalchemy import inspect
+        if target not in (2, 3, 4, 5):
+            raise ValueError('Supported migration targets are 2, 3, 4 and 5')
         if 'schema_versions' in inspect(self.engine).get_table_names():
             with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
@@ -219,10 +256,33 @@ class Store:
                     group_recovery_tasks.create(connection, checkfirst=True)
                     revision = 3
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=3))
-                if revision not in (2, 3):
+                if revision == 3 and target >= 4:
+                    group_workflows.create(connection, checkfirst=True)
+                    group_operations.create(connection, checkfirst=True)
+                    for purchase in connection.execute(select(shared_purchases)).mappings():
+                        connection.execute(insert(group_workflows).values(
+                            purchase_id=purchase['id'], lease_until=0, merchant_id='',
+                            cancel_requested=0, review_required=1,
+                            error='LEGACY_PURCHASE_REQUIRES_REVIEW', updated_at=time.time()))
+                    revision = 4
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=4))
+                if revision == 4 and target >= 5:
+                    room_messages.create(connection, checkfirst=True)
+                    revision = 5
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=5))
+                if revision not in (2, 3, 4, 5):
                     raise RuntimeError('Unsupported database revision; run the documented migration')
             return
-        metadata.create_all(self.engine)
+        tables = [versions, participants, workshops, bookings, attempts, entitlements,
+                  workshop_groups, group_memberships]
+        if target >= 3:
+            tables += [catalog_offers, catalog_resources, group_member_profiles, group_member_preferences,
+                       shared_purchases, purchase_contributions, group_tickets, group_recovery_tasks]
+        if target >= 4:
+            tables += [group_workflows, group_operations]
+        if target >= 5:
+            tables += [room_messages]
+        metadata.create_all(self.engine, tables=tables)
         with self.engine.begin() as connection:
             connection.execute(insert(versions).values(id=1, revision=target))
 
@@ -248,10 +308,10 @@ class Store:
                         price_minor=price, currency='USD', lesson_key=lesson))
 
             # Seed collaborative booking catalog if table exists and is empty
-            try:
-                has_offers = bool(connection.execute(select(catalog_offers.c.id).limit(1)).first())
-            except Exception:
-                has_offers = True
+            # Check before selecting: catching a missing-table error leaves a
+            # PostgreSQL transaction aborted, even when Python catches it.
+            has_offers = (not inspect(connection).has_table('catalog_offers') or
+                          bool(connection.execute(select(catalog_offers.c.id).limit(1)).first()))
             if not has_offers:
                 today = datetime.now(timezone.utc).date()
                 friday = datetime.combine(today + timedelta(days=(4 - today.weekday()) % 7 or 7),

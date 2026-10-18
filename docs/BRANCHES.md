@@ -1,3 +1,8 @@
+> Publication scope: UI-first review snapshot authorized for `Aruisop/PayPal-Hackathon` branch `dev/aarya`. Includes prior Slice 3/backend repairs and partially implemented, execution-unverified AI integration. No acceptance, merge or deployment is claimed.
+
+> Current update (18 October 2026): after the original Slice 3 integration, the user authorized a guided UI redesign, optional on-device MiniLM semantic discovery, and verified private Plan Rescue. The full 132 Python tests, guided frontend contracts, AI boundary/worker contracts and 12 local-demo checks pass with mocks. Browser/model inference and real payment acceptance remain pending. See [handoff](../Aarya_changes.md). The snapshot below records historical branch status.
+
+
 # Branch map and delivery status
 
 Snapshot: 11 October 2026. Check `git branch --show-current`, `git status --short`, and `git log -5 --oneline` when joining work. A branch name identifies scope; the status below identifies acceptance.

@@ -188,37 +188,12 @@ class Phase3AuthorizationTests(unittest.TestCase):
         resp = self.post(self.outsider, f'/api/groups/{group_id}/contributions/order', {})
         self.assertEqual(resp.status_code, 404)
 
-    def test_autonomous_preflight_and_cash_reserve_success(self):
+    def test_simulation_endpoints_cannot_mark_real_contributions_authorized(self):
         group_id = self.create_frozen_group()
-        # Verify liquidity profiles endpoint
-        prof_resp = self.organizer.get(f'/api/groups/{group_id}/liquidity-profiles')
-        self.assertEqual(prof_resp.status_code, 200)
-        profiles = prof_resp.json['profiles']
-        self.assertEqual(len(profiles), 2)
-        self.assertTrue(all(p['isVerified'] for p in profiles))
-        self.assertTrue(all(p['balanceCents'] > 0 for p in profiles))
-
-        # Autonomous pre-check and cash reservation
-        res_resp = self.post(self.organizer, f'/api/groups/{group_id}/preflight-reserve', {'simulateDeficit': False})
-        self.assertEqual(res_resp.status_code, 200)
-        self.assertEqual(res_resp.json['status'], 'PREFLIGHT_SUCCESS')
-        self.assertEqual(len(res_resp.json['verifications']), 2)
-        self.assertTrue(all(v['status'] == 'RESERVED_AUTONOMOUSLY' for v in res_resp.json['verifications']))
-        self.assertEqual(res_resp.json['booking']['state'], 'FINALIZING')
-
-    def test_autonomous_preflight_deficit_diagnostic_and_redirect(self):
-        group_id = self.create_frozen_group()
-        # Autonomous pre-check with simulated deficit
-        res_resp = self.post(self.organizer, f'/api/groups/{group_id}/preflight-reserve', {'simulateDeficit': True})
-        self.assertEqual(res_resp.status_code, 422)
-        self.assertEqual(res_resp.json['status'], 'PREFLIGHT_FAILED')
-        self.assertEqual(res_resp.json['code'], '422_INSUFFICIENT_FUNDS')
-        self.assertIn('shortfallCents', res_resp.json['failedParticipant'])
-        self.assertGreater(res_resp.json['failedParticipant']['shortfallCents'], 0)
-        self.assertIn('exactFailureCause', res_resp.json)
-        self.assertEqual(res_resp.json['safeRedirect']['actionRequired'], 'RESOLVE_DEFICIT')
-        options = [o['action'] for o in res_resp.json['safeRedirect']['options']]
-        self.assertIn('SWITCH_INSTRUMENT', options)
-        self.assertIn('AI_BUDGET_REVISE', options)
-        self.assertIn('SAFE_RELEASE', options)
-
+        for path in ('simulate-authorizations', 'preflight-reserve', 'members/add-demo'):
+            response = self.post(self.organizer, f'/api/groups/{group_id}/{path}', {})
+            self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.organizer.get(f'/api/groups/{group_id}/liquidity-profiles').status_code, 404)
+        saved = self.organizer.get(f'/api/groups/{group_id}/booking').json
+        self.assertEqual(saved['state'], 'AWAITING_AUTHORIZATIONS')
+        self.assertTrue(all(not row['hasAuthorized'] for row in saved['rosterProgress']))

@@ -79,11 +79,13 @@ class FakePayPal:
         self.get_calls += 1
         result = copy.deepcopy(self.orders[order_id])
         if self.hide_order_captures:
-            result['purchase_units'][0].pop('payments', None)
+            result['purchase_units'][0].get('payments', {}).pop('captures', None)
         return result
 
     def get_capture(self, capture_id):
         self.capture_get_calls += 1
+        if capture_id in getattr(self, 'captures', {}):
+            return copy.deepcopy(self.captures[capture_id])
         for order in self.orders.values():
             for capture in order['purchase_units'][0].get('payments', {}).get('captures', []):
                 if capture['id'] == capture_id:
@@ -98,6 +100,8 @@ class FakePayPal:
             if getattr(self, 'fail_authorize', False):
                 raise PayPalError('PAYPAL_UNAVAILABLE')
             order = self.orders[order_id]
+            if order['status'] not in ('APPROVED', 'COMPLETED'):
+                raise PayPalError('ORDER_NOT_APPROVED', uncertain=False)
             if not hasattr(self, 'auth_keys'):
                 self.auth_keys = {}
             if not hasattr(self, 'authorizations'):
@@ -130,6 +134,8 @@ class FakePayPal:
     def void_authorization(self, authorization_id, request_id):
         with self.lock:
             self.void_calls = getattr(self, 'void_calls', 0) + 1
+            if getattr(self, 'fail_void', False):
+                raise PayPalError('PAYPAL_UNAVAILABLE')
             if not hasattr(self, 'authorizations'):
                 self.authorizations = {}
             if authorization_id in self.authorizations:
@@ -142,31 +148,50 @@ class FakePayPal:
             if getattr(self, 'fail_capture_auth', False):
                 raise PayPalError('PAYPAL_UNAVAILABLE')
             if getattr(self, 'reject_capture_auth', False):
-                raise PayPalError('INSTRUMENT_DECLINED', status=422)
+                raise PayPalError('INSTRUMENT_DECLINED', status=422, uncertain=False)
             if not hasattr(self, 'captures'):
                 self.captures = {}
             if not hasattr(self, 'capture_auth_keys'):
                 self.capture_auth_keys = {}
             if request_id not in self.capture_auth_keys:
                 cap_id = f'CAP{len(self.captures) + 1}'
-                cap = dict(id=cap_id, status='COMPLETED',
+                order = next(order for order in self.orders.values() if any(
+                    a['id'] == authorization_id for a in order['purchase_units'][0].get('payments', {}).get('authorizations', [])))
+                cap = dict(id=cap_id, status=getattr(self, 'authorization_capture_status', 'COMPLETED'),
+                           supplementary_data={'related_ids': {'authorization_id': authorization_id, 'order_id': order['id']}},
                            amount=copy.deepcopy(payload.get('amount', {})))
                 self.captures[cap_id] = cap
                 self.capture_auth_keys[request_id] = cap_id
+                self.authorizations[authorization_id]['status'] = 'CAPTURED'
+                order['purchase_units'][0]['payments']['captures'] = [cap]
             else:
                 cap_id = self.capture_auth_keys[request_id]
                 cap = self.captures[cap_id]
+            if getattr(self, 'lose_capture_auth_response', False):
+                raise PayPalError('PAYPAL_UNAVAILABLE')
             return copy.deepcopy(cap)
 
     def refund_capture(self, capture_id, payload, request_id):
         with self.lock:
             self.refund_calls = getattr(self, 'refund_calls', 0) + 1
+            if getattr(self, 'fail_refund', False):
+                raise PayPalError('PAYPAL_UNAVAILABLE')
             if not hasattr(self, 'refunds'):
                 self.refunds = {}
+            if not hasattr(self, 'refund_keys'):
+                self.refund_keys = {}
+            if request_id in self.refund_keys:
+                return copy.deepcopy(self.refunds[self.refund_keys[request_id]])
             ref_id = f'REF{len(self.refunds) + 1}'
-            ref = dict(id=ref_id, status='COMPLETED')
+            ref = dict(id=ref_id, status=getattr(self, 'refund_status', 'COMPLETED'),
+                amount=copy.deepcopy(self.captures[capture_id]['amount']),
+                links=[dict(rel='up', href='https://api-m.sandbox.paypal.com/v2/payments/captures/' + capture_id)])
             self.refunds[ref_id] = ref
+            self.refund_keys[request_id] = ref_id
             return copy.deepcopy(ref)
+
+    def get_refund(self, refund_id):
+        return copy.deepcopy(self.refunds[refund_id])
 
 
 class WorkshopSliceTests(unittest.TestCase):

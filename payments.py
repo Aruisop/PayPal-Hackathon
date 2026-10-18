@@ -47,6 +47,9 @@ class PayPal:
                                          headers=headers or {}, method=method)
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
+                # A successful authorization void may return HTTP 204, no JSON.
+                if response.status == 204:
+                    return {}
                 data = json.load(response)
             if not isinstance(data, dict):
                 raise ValueError('Expected an object')

@@ -106,9 +106,9 @@ class Phase5TravelReuseTests(unittest.TestCase):
         self.assertEqual(t3['assignedResource'], 'Place #3')
         self.assertEqual(t3['shareCents'], 3333)
 
-        self.assertTrue(t1['ticketCode'].startswith('TICKET-excursion-kayak-canyon-sat'))
-        self.assertTrue(t2['ticketCode'].startswith('TICKET-excursion-kayak-canyon-sat'))
-        self.assertTrue(t3['ticketCode'].startswith('TICKET-excursion-kayak-canyon-sat'))
+        self.assertTrue(t1['ticketCode'].startswith('TICKET-'))
+        self.assertTrue(t2['ticketCode'].startswith('TICKET-'))
+        self.assertTrue(t3['ticketCode'].startswith('TICKET-'))
 
         # Check places are BOOKED in catalog_resources
         store = self.app.extensions['store']

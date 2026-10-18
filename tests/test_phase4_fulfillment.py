@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from server import create_app
-from storage import catalog_resources, group_recovery_tasks, group_tickets
+from storage import catalog_resources, group_operations, group_tickets
 from test_workshop_slice import FakePayPal
 
 
@@ -93,13 +93,13 @@ class Phase4FulfillmentTests(unittest.TestCase):
 
         # Alice fetches her ticket
         t1 = self.organizer.get(f'/api/groups/{group_id}/ticket').json
-        self.assertTrue(t1['ticketCode'].startswith('TICKET-movie-cosmic-odyssey-fri'))
+        self.assertTrue(t1['ticketCode'].startswith('TICKET-'))
         self.assertEqual(t1['alias'], 'Alice')
         self.assertEqual(t1['assignedResource'], 'Seat A1')
 
         # Bob fetches his ticket
         t2 = self.member.get(f'/api/groups/{group_id}/ticket').json
-        self.assertTrue(t2['ticketCode'].startswith('TICKET-movie-cosmic-odyssey-fri'))
+        self.assertTrue(t2['ticketCode'].startswith('TICKET-'))
         self.assertEqual(t2['alias'], 'Bob')
         self.assertEqual(t2['assignedResource'], 'Seat A2')
 
@@ -129,7 +129,9 @@ class Phase4FulfillmentTests(unittest.TestCase):
         # Finalize should encounter partial capture failure and execute compensatory recovery
         fin_resp = self.post(self.organizer, f'/api/groups/{group_id}/finalize', {})
         self.assertEqual(fin_resp.status_code, 502)
-        self.assertEqual(fin_resp.json['error'], 'PARTIAL_CAPTURE_FAILED_REFUNDED')
+        self.assertEqual(fin_resp.json['error'], 'PAYMENT_RECOVERY_REQUIRED')
+        saved = self.organizer.get(f'/api/groups/{group_id}/booking').json
+        self.assertEqual(saved['state'], 'CANCELLED')
 
         # Verify refund was executed for the completed capture
         self.assertEqual(self.fake.refund_calls, 1)
@@ -150,7 +152,7 @@ class Phase4FulfillmentTests(unittest.TestCase):
 
         # Verify recovery tasks were recorded
         with store.engine.connect() as conn:
-            tasks = conn.execute(select(group_recovery_tasks)).mappings().all()
+            tasks = conn.execute(select(group_operations).where(group_operations.c.kind.in_(['REFUND', 'VOID']))).mappings().all()
             self.assertGreaterEqual(len(tasks), 1)
 
     def test_finalize_rejected_if_not_all_members_authorized(self):

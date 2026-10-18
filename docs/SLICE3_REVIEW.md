@@ -1,77 +1,23 @@
-# Collaborative Booking & Equal Payments: Slice 3 Review Packet
+# Current UI-first review snapshot
 
-Status: Delivered on `slice/3-collaborative-booking-and-equal-payments`.
+The user subsequently authorized a visual redesign and meaningful key-free AI, then scoped publication primarily as UI improvement on `Aruisop/PayPal-Hackathon` branch `dev/aarya`. AI source integration is included without claiming verified real-model execution. The current implementation has a light/navy guided workspace, optional on-device MiniLM semantic discovery, read-only private Plan Rescue and AI ordering of verified proposals. It preserves the underlying collaborative protocol, seat selection, workshop checkout and isolated lab. No schema or payment protocol changed in this pass. Full 132 mocked Python tests, guided frontend contracts, AI boundary/worker contracts with mocked embeddings and 12 local-demo checks pass. Model assets are reachable; actual browser rendering/inference, live multi-buyer payments and PostgreSQL remain unverified because browser tooling fails before launch. See [current handoff](../Aarya_changes.md) and [AI design](AI_AND_GUIDED_UX.md).
 
-## Delivered Flow & Capabilities
+The original-style integration review below is historical evidence; its design restriction is superseded by the user's explicit redesign request.
 
-GroupPay transforms group commerce from single-buyer exposure ("one friend becomes the bank") into a non-custodial multi-buyer coordination engine powered by PayPal Sandbox REST APIs (`intent="AUTHORIZE"`) and Google Gemini AI.
+# Slice 3 original-UI integration review
 
-1. **Multi-Party Consensus & 12 AI Safety Gates**:
-   - Reconciles conflicting natural language scheduling, budget ceilings, and dietary constraints across group members.
-   - Built-in prompt injection defense neutralizes jailbreak attempts (`price=0`, `system override`), preserving immutable catalog pricing.
-   - Deterministic catalog matching selects valid showtimes/itineraries with adjacent seats or excursion places without LLM hallucination.
+Date: 18 October 2026. Base: Panchadip-128's slice/3-collaborative-booking-and-equal-payments at 41ec3d7. Status: review candidate, not accepted or deployed.
 
-2. **Exact Integer Cent Precision**:
-   - Zero floating-point rounding errors. Server-owned catalog prices partitioned mathematically: $T = \sum c_i$.
-   - Remainder pennies allocated deterministically in roster order.
-   - Cryptographic 15-minute lease timer locks catalog inventory (`held_until`) with automatic TTL fencing.
+The original discovery, seat canvas, wallet card, sounds, workshop flow and Judge Hub are preserved. The group room now connects actual preference contracts, saved shared discussion, independent buyer approval, exact quotes, verified capture evidence and durable recovery. Details and provenance are in [Aarya_changes.md](../Aarya_changes.md).
 
-3. **Multi-Buyer PayPal Sandbox Holds (`intent="AUTHORIZE"`)**:
-   - Each participant independently approves an isolated payment hold directly to the merchant.
-   - Zero pooled consumer wallet or custodial intermediary, eliminating Money Transmitter License (MTL) and MSB regulatory liabilities.
+Reproduced blockers corrected: frontend interpretation field-name mismatch; invented defaults/98% consensus/first-catalog fallback; missing buyer approval before authorization; pending captures issuing tickets; failed refund/void hidden behind cancellation; demo writes changing saved inventory; decorative QR/scanner claiming signature validation.
 
-4. **Fenced Sequential Capture & Distributed Compensatory Rollback**:
-   - Sequential capture initiates only when 100% of the roster has approved their hold.
-   - Uses cryptographic claim tokens (`fenced_claim_token`) and persistent idempotency keys (`PayPal-Request-Id`).
-   - If any member's payment declines at capture time (e.g. simulated `422 INSTRUMENT_DECLINED`):
-     - Prior completed captures are automatically refunded via PayPal API (`/v2/payments/captures/{id}/refund`).
-     - Pending authorizations are immediately voided (`/v2/payments/authorizations/{id}/void`).
-     - Held inventory (cinema seats / excursion places) is restored to `FREE` in the catalog.
-     - Guarantees zero financial loss for buyers and zero chargeback exposure for merchants.
+Reused reviewed backend modules and their tests from the archived correction; retained and integrated the original public UI. The new public/room.js separates real session-owned coordination from the original public/app.js navigation/workshops and public/demo.js fictional lab. No financial data or credentials were restored from the archive.
 
-5. **Private Cryptographic Passes**:
-   - Each participant owns their own isolated digital wallet pass with dynamic SVG QR code and SHA256 checksum.
-   - Cross-member private data isolation: members cannot view or tamper with other members' barcodes, receipts, or instruments.
+Revision 4 adds durable group operations/workflows and quarantines legacy unverified purchases. Revision 5 adds shared messages. Existing rows are preserved. Applied migrations remain unchanged. Known and unknown provider outcomes are reconciled; failed/unknown compensation retains inventory and remains visible. Captures are sequential, not an atomic settlement.
 
-6. **Judge Evaluation Center & Interactive Developer Tools**:
-   - **Multi-Persona Perspective Switcher**: Switch between Alice (Lead), Bob (Member), Charlie (Member), and a 3-Way Real-Time Split Screen phone simulator.
-   - **Gemini AI Guardrails & Injection Sandbox**: Interactive adversarial injection probes testing real-time security intercepts.
-   - **Smartphone Pass Scanner Simulator**: Live camera laser scanner validating QR payloads and cryptographic ledger matching.
-   - **Synthesized Web Audio API Engine**: Ultra-clean tactile sound cues for payment authorizations and alerts with zero external asset dependencies.
-   - **Interactive Distributed DAG State Machine**: Click-to-inspect pipeline visualizing ACID transaction boundaries and compensatory saga rollbacks.
+Validation: 125 Python tests passed in 31.492 seconds with temporary SQLite and mocked providers; frontend bootstrap/room/SDK contracts and 12 isolated demo checks passed. Dependency, syntax, static-ID and duplicate-ID checks passed. The browser tool failed to initialize (kernel-assets error 3), so rendered desktop/mobile, keyboard behavior, actual SDK windows and real multi-buyer payment evidence remain outstanding. Real Gemini and PostgreSQL runtime are unverified.
 
-## Storage and Migration
+Review priorities: compare the original UI diff; run all checks; inspect pending/unknown evidence and failed compensation; verify identity/privacy across browser profiles and group switches; test a genuine Sandbox group; verify reload and durable recovery; check mobile/keyboard; test PostgreSQL before hosting. The lab must never mutate saved application data. Private QR/checking does not establish real venue admission, signing or wallet integration.
 
-Revision 3 adds:
-- `catalog_offers`: Domain, merchant ID, title, schedule time, integer price in cents, and metadata.
-- `catalog_resources`: Individual seats and excursion places with resource keys, row/col coordinates, and reservation states (`FREE`, `HELD`, `BOOKED`).
-- `group_member_profiles`: Custom member display aliases and consent progress tracking.
-- `group_member_preferences`: Participant natural language prompts, confirmed structured constraints, and AI negotiation notes.
-- `shared_purchases`: Coordinated purchase lifecycle states (`DRAFT`, `AWAITING_AUTHORIZATIONS`, `FINALIZING`, `CONFIRMED`, `CANCELLED`), lease TTLs, and claim fencing tokens.
-- `purchase_contributions`: Individual participant shares, integer cents, order IDs, authorization IDs, capture IDs, and contribution states (`PENDING`, `AUTHORIZED`, `CAPTURED`, `REFUNDED`, `VOIDED`).
-- `group_tickets`: Private verifiable passes, unique ticket codes, assigned resources, issuance timestamps, and isolated participant ownership.
-- `group_recovery_tasks`: Durable distributed compensatory saga tasks for automated refunds and voids.
-
-## Verification & Test Suite
-
-The test suite covers **75 automated unit and integration tests**:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-```text
-----------------------------------------------------------------------
-Ran 75 tests in 42.732s
-
-OK
-```
-
-- **36 tests**: Workshop Baseline (auth idempotency, lease fencing, session security).
-- **6 tests**: Group Coordination & Invitation Security.
-- **10 tests**: Exact Integer Cent Math, Seat Map Races, and Freeze Locks.
-- **12 tests**: AI Planning Evaluation Gates (Injection Defense, Outage Fallback, Budget Conflicts).
-- **9 tests**: Multi-Buyer Authorizations, Participant Consent, Voiding, and Recovery.
-- **4 tests**: Sequential Capture Fulfillment, Private Ticket Isolation, and Partial Capture Recovery.
-- **2 tests**: Fixed-Price Travel Excursion Reuse & 3-Way Remainder Cent Distribution.
-- **2 tests**: Hackathon Evaluation Showcase & Live Chaos Rollback Simulation.
+Historical Slice 1/2 evidence and original PRD are preserved. No commit, push, merge, external acceptance, production approval or deployment has been performed.

@@ -1,1245 +1,249 @@
-import json
-import secrets
+﻿"""Group reservations and private views; payment orchestration lives separately."""
 import time
 from datetime import datetime, timezone
-from sqlalchemy import func, insert, select, update
-from sqlalchemy.exc import IntegrityError
 
-from ai_planner import AIError, DeterministicCatalogMatcher, GroupPlanExplainer, PreferenceInterpreter
-from storage import (catalog_offers, catalog_resources, group_member_preferences,
-                     group_member_profiles, group_memberships, group_recovery_tasks,
-                     group_tickets, identifier, money, purchase_contributions,
-                     shared_purchases, split_equal_cents, workshop_groups)
+from sqlalchemy import insert, select, update
+
+from booking_errors import BookingError
+from storage import (catalog_offers, catalog_resources, group_member_profiles,
+                     group_memberships, group_workflows, group_tickets, identifier,
+                     money, purchase_contributions, shared_purchases,
+                     split_equal_cents, workshop_groups)
+
+OPEN_STATES = ('AWAITING_AUTHORIZATIONS', 'FINALIZING', 'RECOVERY_REQUIRED', 'CANCELLING', 'CONFIRMED')
 
 
-class BookingError(Exception):
-    def __init__(self, issue, status=409):
-        self.issue, self.status = issue, status
+def member_group(connection, participant_id, group_id, organizer=False):
+    group = connection.execute(select(workshop_groups).join(group_memberships,
+        group_memberships.c.group_id == workshop_groups.c.id).where(
+        workshop_groups.c.id == group_id,
+        group_memberships.c.participant_id == participant_id)).mappings().first()
+    if not group:
+        raise BookingError('GROUP_NOT_FOUND', 404)
+    if organizer and group['organizer_id'] != participant_id:
+        raise BookingError('ORGANIZER_REQUIRED', 403)
+    return group
+
+
+def latest_purchase(connection, group_id):
+    row = connection.execute(select(shared_purchases).where(
+        shared_purchases.c.group_id == group_id).order_by(
+        shared_purchases.c.created_at.desc(), shared_purchases.c.id)).mappings().first()
+    return dict(row) if row else None
 
 
 class CollabBooking:
     def __init__(self, store, origin, paypal=None):
-        self.store = store
-        self.origin = origin
-        self.paypal = paypal
+        from booking_payments import GroupPayments
+        from planning import Planning
+        self.store, self.origin, self.paypal = store, origin, paypal
+        self.planning = Planning(store)
+        self.payments = GroupPayments(self, paypal)
 
-    def _member_group(self, connection, participant_id, group_id):
-        return connection.execute(select(workshop_groups).join(
-            group_memberships, group_memberships.c.group_id == workshop_groups.c.id).where(
-            workshop_groups.c.id == group_id,
-            group_memberships.c.participant_id == participant_id)).mappings().first()
-
-    def _get_active_purchase(self, connection, group_id):
-        return connection.execute(select(shared_purchases).where(
-            shared_purchases.c.group_id == group_id,
-            shared_purchases.c.state.in_(['DRAFT', 'AWAITING_AUTHORIZATIONS', 'FINALIZING', 'CONFIRMED'])
-        ).order_by(shared_purchases.c.created_at.desc())).mappings().first()
-
-    def set_profile(self, participant_id, group_id, alias, consent=True):
+    def set_profile(self, participant_id, group_id, alias, consent=False):
         if not isinstance(alias, str) or not alias.strip() or len(alias.strip()) > 60:
             raise BookingError('INVALID_ALIAS', 400)
-        clean_alias = alias.strip()
         with self.store.engine.begin() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if active and active['frozen_at']:
-                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
+            member_group(connection, participant_id, group_id)
+            connection.execute(update(workshop_groups).where(workshop_groups.c.id == group_id).values(id=group_id))
+            active = latest_purchase(connection, group_id)
+            if active and active['state'] in OPEN_STATES:
+                raise BookingError('ROSTER_ALREADY_FROZEN')
             existing = connection.execute(select(group_member_profiles.c.id).where(
                 group_member_profiles.c.group_id == group_id,
                 group_member_profiles.c.participant_id == participant_id)).scalar()
-            now = time.time()
+            values = dict(alias=alias.strip(), consent_coarse_progress=int(bool(consent)), updated_at=time.time())
             if existing:
-                connection.execute(update(group_member_profiles).where(
-                    group_member_profiles.c.id == existing).values(
-                    alias=clean_alias, consent_coarse_progress=1 if consent else 0, updated_at=now))
+                connection.execute(update(group_member_profiles).where(group_member_profiles.c.id == existing).values(**values))
             else:
-                connection.execute(insert(group_member_profiles).values(
-                    id=identifier(), group_id=group_id, participant_id=participant_id,
-                    alias=clean_alias, consent_coarse_progress=1 if consent else 0, updated_at=now))
-        return dict(participantID=participant_id, alias=clean_alias)
+                connection.execute(insert(group_member_profiles).values(id=identifier(), group_id=group_id,
+                    participant_id=participant_id, **values))
+        return dict(participantID=participant_id, alias=alias.strip())
+
+    def _selection(self, connection, group_id, offer_id, resource_ids):
+        members = connection.execute(select(group_memberships.c.participant_id).where(
+            group_memberships.c.group_id == group_id).order_by(
+            group_memberships.c.joined_at, group_memberships.c.id)).scalars().all()
+        if not 2 <= len(members) <= 4:
+            raise BookingError('GROUP_SIZE_UNSUPPORTED', 400)
+        offer = connection.execute(select(catalog_offers).where(catalog_offers.c.id == offer_id)).mappings().first()
+        if not offer:
+            raise BookingError('OFFER_NOT_FOUND', 404)
+        if datetime.fromisoformat(offer['schedule_time']).astimezone(timezone.utc) <= datetime.now(timezone.utc):
+            raise BookingError('OFFER_EXPIRED')
+        if (not isinstance(resource_ids, list) or len(resource_ids) != len(members) or
+                any(not isinstance(value, str) for value in resource_ids) or len(set(resource_ids)) != len(resource_ids)):
+            raise BookingError('RESOURCE_COUNT_MISMATCH', 400)
+        resources = connection.execute(select(catalog_resources).where(
+            catalog_resources.c.id.in_(resource_ids), catalog_resources.c.offer_id == offer_id)).mappings().all()
+        if len(resources) != len(resource_ids):
+            raise BookingError('INVALID_RESOURCES', 400)
+        if any(resource['state'] != 'FREE' for resource in resources):
+            raise BookingError('SEAT_UNAVAILABLE')
+        if offer['domain'] == 'movie':
+            columns = sorted(resource['col_number'] for resource in resources)
+            if len({r['row_label'] for r in resources}) != 1 or columns[-1] - columns[0] != len(columns) - 1:
+                raise BookingError('ADJACENT_SEATS_REQUIRED', 400)
+        total = offer['price_minor'] * len(members) if offer['domain'] == 'movie' else offer['price_minor']
+        if total <= 0 or offer['currency'] != 'USD':
+            raise BookingError('INVALID_CATALOG_QUOTE')
+        self.planning.validate_selection(connection, group_id, offer_id, resource_ids)
+        return members, dict(offer), split_equal_cents(total, members), total
 
     def quote(self, participant_id, group_id, offer_id, selected_resource_ids=None):
         with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            members = connection.execute(select(group_memberships.c.participant_id).where(
-                group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).scalars().all()
-            if len(members) < 2 or len(members) > 4:
-                raise BookingError('GROUP_SIZE_UNSUPPORTED', 400)
-            offer = connection.execute(select(catalog_offers).where(catalog_offers.c.id == offer_id)).mappings().first()
-            if not offer:
-                raise BookingError('OFFER_NOT_FOUND', 404)
-
-            # Check resources if provided
-            if selected_resource_ids:
-                if len(selected_resource_ids) != len(members):
-                    raise BookingError('RESOURCE_COUNT_MISMATCH', 400)
-                resources = connection.execute(select(catalog_resources).where(
-                    catalog_resources.c.id.in_(selected_resource_ids),
-                    catalog_resources.c.offer_id == offer_id)).mappings().all()
-                if len(resources) != len(selected_resource_ids):
-                    raise BookingError('INVALID_RESOURCES', 400)
-                for r in resources:
-                    if r['state'] != 'FREE':
-                        raise BookingError('SEAT_UNAVAILABLE', 409)
-
-            # Authoritative pricing calculation
-            if offer['domain'] == 'movie':
-                total_cents = offer['price_minor'] * len(members)
-            else:
-                total_cents = offer['price_minor']
-
-            shares = split_equal_cents(total_cents, members)
-            share_list = [{'participantID': pid, 'shareCents': cents, 'shareValue': money(cents)}
-                          for pid, cents in shares.items()]
-
-            return dict(
-                offerID=offer['id'],
-                domain=offer['domain'],
-                title=offer['title'],
-                merchantID=offer['merchant_id'],
-                scheduleTime=offer['schedule_time'],
-                totalCents=total_cents,
-                totalValue=money(total_cents),
-                currency=offer['currency'],
-                memberCount=len(members),
-                shares=share_list,
-                roundingRule='Equal integer cent allocation: T // N cents each, with remainder distributed 1 cent each in roster order.',
-                policy='all_or_nothing_refund'
-            )
+            member_group(connection, participant_id, group_id)
+            if selected_resource_ids is None:
+                count = len(connection.execute(select(group_memberships.c.id).where(
+                    group_memberships.c.group_id == group_id)).all())
+                free = connection.execute(select(catalog_resources).where(
+                    catalog_resources.c.offer_id == offer_id, catalog_resources.c.state == 'FREE').order_by(
+                    catalog_resources.c.row_label, catalog_resources.c.col_number)).mappings().all()
+                selected_resource_ids = [row['id'] for row in free[:count]]
+            members, offer, shares, total = self._selection(connection, group_id, offer_id, selected_resource_ids)
+        return dict(offerID=offer_id, domain=offer['domain'], title=offer['title'], scheduleTime=offer['schedule_time'],
+            totalCents=total, totalValue=money(total), currency=offer['currency'], memberCount=len(members),
+            shares=[dict(participantID=pid, shareCents=value, shareValue=money(value)) for pid, value in shares.items()],
+            policy='all_or_nothing_refund', roundingRule='Remainder cents assigned in frozen roster order.')
 
     def freeze(self, participant_id, group_id, offer_id, selected_resource_ids):
-        if not selected_resource_ids or not isinstance(selected_resource_ids, list):
-            raise BookingError('RESOURCES_REQUIRED', 400)
         with self.store.engine.begin() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            if group['organizer_id'] != participant_id:
-                raise BookingError('ORGANIZER_REQUIRED', 403)
-            active = self._get_active_purchase(connection, group_id)
-            if active and active['frozen_at']:
-                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
-
-            members = connection.execute(select(group_memberships.c.participant_id).where(
-                group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).scalars().all()
-            if len(members) < 2 or len(members) > 4:
-                raise BookingError('GROUP_SIZE_UNSUPPORTED', 400)
-            if len(selected_resource_ids) != len(members):
-                raise BookingError('RESOURCE_COUNT_MISMATCH', 400)
-
-            offer = connection.execute(select(catalog_offers).where(catalog_offers.c.id == offer_id)).mappings().first()
-            if not offer:
-                raise BookingError('OFFER_NOT_FOUND', 404)
-
-            # Fetch resources with lock verification
-            resources = connection.execute(select(catalog_resources).where(
-                catalog_resources.c.id.in_(selected_resource_ids),
-                catalog_resources.c.offer_id == offer_id)).mappings().all()
-            if len(resources) != len(selected_resource_ids):
-                raise BookingError('INVALID_RESOURCES', 400)
-            for r in resources:
-                if r['state'] != 'FREE':
-                    raise BookingError('SEAT_UNAVAILABLE', 409)
-
-            # Authoritative pricing
-            if offer['domain'] == 'movie':
-                total_cents = offer['price_minor'] * len(members)
-            else:
-                total_cents = offer['price_minor']
-
-            shares = split_equal_cents(total_cents, members)
-            now = time.time()
-            deadline = now + 900  # 15-minute server-owned hold deadline
-            purchase_id = identifier()
-
-            # Create shared purchase
-            connection.execute(insert(shared_purchases).values(
-                id=purchase_id, group_id=group_id, offer_id=offer_id,
-                state='AWAITING_AUTHORIZATIONS', total_cents=total_cents, currency=offer['currency'],
-                frozen_at=now, hold_deadline=deadline, policy='all_or_nothing_refund',
-                fenced_claim_token=None, created_at=now))
-
-            # Hold resources
-            for rid in selected_resource_ids:
-                connection.execute(update(catalog_resources).where(
-                    catalog_resources.c.id == rid, catalog_resources.c.state == 'FREE').values(
+            member_group(connection, participant_id, group_id, organizer=True)
+            # Join, freeze and profile updates serialize on the same parent row.
+            connection.execute(update(workshop_groups).where(workshop_groups.c.id == group_id).values(id=group_id))
+            prior = latest_purchase(connection, group_id)
+            if prior and prior['state'] not in ('CANCELLED', 'EXPIRED'):
+                raise BookingError('ROSTER_ALREADY_FROZEN')
+            if prior:
+                workflow = connection.execute(select(group_workflows).where(
+                    group_workflows.c.purchase_id == prior['id'])).mappings().one()
+                if workflow['review_required']:
+                    raise BookingError('LEGACY_PURCHASE_REQUIRES_REVIEW')
+            members, offer, shares, total = self._selection(connection, group_id, offer_id, selected_resource_ids)
+            now, purchase_id = time.time(), identifier()
+            deadline = now + 900
+            connection.execute(insert(shared_purchases).values(id=purchase_id, group_id=group_id,
+                offer_id=offer_id, state='AWAITING_AUTHORIZATIONS', total_cents=total, currency=offer['currency'],
+                frozen_at=now, hold_deadline=deadline, policy='all_or_nothing_refund', created_at=now))
+            connection.execute(insert(group_workflows).values(purchase_id=purchase_id, lease_until=0,
+                merchant_id=getattr(self.paypal, 'merchant_id', '') or '', cancel_requested=0,
+                review_required=0, updated_at=now))
+            for resource_id in sorted(selected_resource_ids):
+                changed = connection.execute(update(catalog_resources).where(
+                    catalog_resources.c.id == resource_id, catalog_resources.c.state == 'FREE').values(
                     state='HELD', held_by_purchase_id=purchase_id, held_until=deadline))
-
-            # Fetch profiles for aliases
-            profiles = dict(connection.execute(select(
-                group_member_profiles.c.participant_id, group_member_profiles.c.alias).where(
-                group_member_profiles.c.group_id == group_id)).all())
-
-            # Create contributions bound to members in stable order
-            for i, pid in enumerate(members):
-                alias = profiles.get(pid, f'Member {i + 1}')
-                assigned_res = selected_resource_ids[i]
-                connection.execute(insert(purchase_contributions).values(
-                    id=identifier(), purchase_id=purchase_id, participant_id=pid,
-                    alias=alias, share_cents=shares[pid], assigned_resource_id=assigned_res,
-                    state='PENDING_CONSENT', consent_given_at=None,
-                    order_id=None, authorization_id=None, capture_id=None, created_at=now))
-
+                if changed.rowcount != 1:
+                    raise BookingError('SEAT_UNAVAILABLE')
+            profiles = dict(connection.execute(select(group_member_profiles.c.participant_id,
+                group_member_profiles.c.alias).where(group_member_profiles.c.group_id == group_id)).all())
+            for index, pid in enumerate(members):
+                connection.execute(insert(purchase_contributions).values(id=identifier(), purchase_id=purchase_id,
+                    participant_id=pid, alias=profiles.get(pid, f'Member {index + 1}'), share_cents=shares[pid],
+                    assigned_resource_id=selected_resource_ids[index], state='PENDING_CONSENT', created_at=now))
         return self.view(participant_id, group_id)
 
     def view(self, participant_id, group_id):
         with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active:
+            group = member_group(connection, participant_id, group_id)
+            purchase = latest_purchase(connection, group_id)
+            if not purchase:
                 return dict(groupID=group_id, hasBooking=False)
-
-            offer = connection.execute(select(catalog_offers).where(
-                catalog_offers.c.id == active['offer_id'])).mappings().first()
-
-            all_contribs = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-
-            # Coarse progress safe for all members
-            coarse_progress = []
-            own_contribution = None
-            for c in all_contribs:
-                coarse_progress.append(dict(
-                    alias=c['alias'],
-                    state=c['state'],
-                    hasConsented=bool(c['consent_given_at']),
-                    hasAuthorized=bool(c['authorization_id'])
-                ))
-                if c['participant_id'] == participant_id:
-                    res_label = None
-                    if c['assigned_resource_id']:
-                        res_label = connection.execute(select(catalog_resources.c.label).where(
-                            catalog_resources.c.id == c['assigned_resource_id'])).scalar()
-                    own_contribution = dict(
-                        contributionID=c['id'],
-                        alias=c['alias'],
-                        shareCents=c['share_cents'],
-                        shareValue=money(c['share_cents']),
-                        assignedResource=res_label,
-                        state=c['state'],
-                        orderID=c['order_id'],
-                        authorizationID=c['authorization_id'],
-                        consentGiven=bool(c['consent_given_at'])
-                    )
-
-            is_organizer = group['organizer_id'] == participant_id
-            return dict(
-                groupID=group_id,
-                hasBooking=True,
-                purchaseID=active['id'],
-                state=active['state'],
-                offerID=offer['id'],
-                title=offer['title'],
-                domain=offer['domain'],
-                totalCents=active['total_cents'],
-                totalValue=money(active['total_cents']),
-                currency=active['currency'],
-                frozenAt=active['frozen_at'],
-                holdDeadline=active['hold_deadline'],
-                policy=active['policy'],
-                isOrganizer=is_organizer,
-                myShare=own_contribution,
-                rosterProgress=coarse_progress
-            )
+            workflow = connection.execute(select(group_workflows).where(
+                group_workflows.c.purchase_id == purchase['id'])).mappings().one()
+            offer = connection.execute(select(catalog_offers).where(catalog_offers.c.id == purchase['offer_id'])).mappings().one()
+            contributions = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.purchase_id == purchase['id']).order_by(purchase_contributions.c.created_at,
+                purchase_contributions.c.id)).mappings().all()
+            profiles = {row['participant_id']: row for row in connection.execute(select(group_member_profiles).where(
+                group_member_profiles.c.group_id == group_id)).mappings()}
+            own, progress = None, []
+            for contribution in contributions:
+                mine = contribution['participant_id'] == participant_id
+                profile = profiles.get(contribution['participant_id'])
+                if mine or (profile and profile['consent_coarse_progress']):
+                    progress.append(dict(participantID=contribution['participant_id'], alias=contribution['alias'],
+                        state=contribution['state'], hasConsented=bool(contribution['consent_given_at']),
+                        hasAuthorized=contribution['state'] in ('AUTHORIZED', 'CAPTURED'),
+                        shareValue=money(contribution['share_cents'])))
+                if mine:
+                    label = connection.execute(select(catalog_resources.c.label).where(
+                        catalog_resources.c.id == contribution['assigned_resource_id'])).scalar()
+                    own = dict(contributionID=contribution['id'], alias=contribution['alias'],
+                        shareCents=contribution['share_cents'], shareValue=money(contribution['share_cents']),
+                        assignedResource=label, state=contribution['state'], orderID=contribution['order_id'],
+                        authorizationID=contribution['authorization_id'], captureID=contribution['capture_id'],
+                        consentGiven=bool(contribution['consent_given_at']))
+            state = 'RECOVERY_REQUIRED' if workflow['review_required'] else purchase['state']
+            return dict(groupID=group_id, hasBooking=True, purchaseID=purchase['id'], state=state,
+                offerID=offer['id'], title=offer['title'], domain=offer['domain'], totalCents=purchase['total_cents'],
+                totalValue=money(purchase['total_cents']), currency=purchase['currency'], frozenAt=purchase['frozen_at'],
+                holdDeadline=purchase['hold_deadline'], policy=purchase['policy'], isOrganizer=group['organizer_id'] == participant_id,
+                myShare=own, rosterProgress=progress, error=workflow['error'], cancelRequested=bool(workflow['cancel_requested']),
+                operationInProgress=workflow['lease_until'] > time.time(),
+                recoveryRequired=state in ('RECOVERY_REQUIRED', 'CANCELLING'),
+                providerEvidence='sandbox', inventorySource='controlled_local_catalog')
 
     def give_consent(self, participant_id, group_id):
-        with self.store.engine.begin() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active or active['state'] != 'AWAITING_AUTHORIZATIONS':
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-            now = time.time()
-            res = connection.execute(update(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'],
-                purchase_contributions.c.participant_id == participant_id).values(
-                state='ACCEPTED', consent_given_at=now))
-            if res.rowcount != 1:
-                raise BookingError('CONTRIBUTION_NOT_FOUND', 404)
-        return self.view(participant_id, group_id)
-
-    def submit_preference(self, participant_id, group_id, raw_text, user_tz='UTC', reference_date=None):
-        if not isinstance(raw_text, str) or not raw_text.strip():
-            raise BookingError('PREFERENCE_TEXT_REQUIRED', 400)
-        clean_text = raw_text.strip()[:1000]
-
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if active and active['frozen_at']:
-                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
-
-        interpreter = PreferenceInterpreter()
-        interpreted = interpreter.interpret(clean_text, user_tz=user_tz, reference_date=reference_date)
-
-        now = time.time()
-        with self.store.engine.begin() as connection:
-            active = self._get_active_purchase(connection, group_id)
-            if active and active['frozen_at']:
-                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
-
-            existing = connection.execute(select(group_member_preferences.c.id).where(
-                group_member_preferences.c.group_id == group_id,
-                group_member_preferences.c.participant_id == participant_id)).scalar()
-
-            if existing:
-                connection.execute(update(group_member_preferences).where(
-                    group_member_preferences.c.id == existing).values(
-                    raw_text=clean_text,
-                    interpreted_json=json.dumps(interpreted),
-                    confirmed_constraints_json=None,
-                    is_confirmed=0,
-                    updated_at=now
-                ))
-            else:
-                connection.execute(insert(group_member_preferences).values(
-                    id=identifier(),
-                    group_id=group_id,
-                    participant_id=participant_id,
-                    raw_text=clean_text,
-                    interpreted_json=json.dumps(interpreted),
-                    confirmed_constraints_json=None,
-                    is_confirmed=0,
-                    updated_at=now
-                ))
-
-        return {
-            'groupID': group_id,
-            'participantID': participant_id,
-            'status': 'INTERPRETED',
-            'isConfirmed': False,
-            'interpretation': interpreted
-        }
-
-    def confirm_preference(self, participant_id, group_id, confirmed_constraints):
-        if not isinstance(confirmed_constraints, dict):
-            raise BookingError('CONSTRAINTS_REQUIRED', 400)
-
-        with self.store.engine.begin() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if active and active['frozen_at']:
-                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
-
-            pref = connection.execute(select(group_member_preferences).where(
-                group_member_preferences.c.group_id == group_id,
-                group_member_preferences.c.participant_id == participant_id)).mappings().first()
-            if not pref:
-                raise BookingError('PREFERENCE_NOT_FOUND', 404)
-
-            now = time.time()
-            connection.execute(update(group_member_preferences).where(
-                group_member_preferences.c.id == pref['id']).values(
-                confirmed_constraints_json=json.dumps(confirmed_constraints),
-                is_confirmed=1,
-                updated_at=now
-            ))
-
-        return {
-            'groupID': group_id,
-            'participantID': participant_id,
-            'status': 'CONFIRMED',
-            'isConfirmed': True,
-            'confirmedConstraints': confirmed_constraints
-        }
-
-    def get_group_plan(self, participant_id, group_id, domain='movie'):
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-
-            members = connection.execute(select(group_memberships.c.participant_id).where(
-                group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).scalars().all()
-            if len(members) < 2 or len(members) > 4:
-                raise BookingError('GROUP_SIZE_UNSUPPORTED', 400)
-
-            profiles = dict(connection.execute(select(
-                group_member_profiles.c.participant_id, group_member_profiles.c.alias).where(
-                group_member_profiles.c.group_id == group_id)).all())
-
-            # Load preferences
-            prefs = connection.execute(select(group_member_preferences).where(
-                group_member_preferences.c.group_id == group_id)).mappings().all()
-            pref_by_pid = {p['participant_id']: p for p in prefs}
-
-            member_constraints = []
-            unconfirmed_members = []
-            for i, pid in enumerate(members):
-                alias = profiles.get(pid, f'Member {i + 1}')
-                p = pref_by_pid.get(pid)
-                if p and p['is_confirmed'] and p['confirmed_constraints_json']:
-                    c = json.loads(p['confirmed_constraints_json'])
-                    c['participant_id'] = pid
-                    c['alias'] = alias
-                    c['is_confirmed'] = True
-                    member_constraints.append(c)
-                else:
-                    unconfirmed_members.append(alias)
-                    tentative = json.loads(p['interpreted_json']) if p else {}
-                    tentative['participant_id'] = pid
-                    tentative['alias'] = alias
-                    tentative['is_confirmed'] = False
-                    member_constraints.append(tentative)
-
-            # Query catalog offers for this domain
-            raw_offers = connection.execute(select(catalog_offers).where(
-                catalog_offers.c.domain == domain)).mappings().all()
-
-            offers = []
-            for ro in raw_offers:
-                res_rows = connection.execute(select(catalog_resources).where(
-                    catalog_resources.c.offer_id == ro['id']).order_by(
-                    catalog_resources.c.label)).mappings().all()
-                resources = [dict(id=r['id'], label=r['label'], state=r['state']) for r in res_rows]
-                meta = json.loads(ro['meta_json']) if ro.get('meta_json') else {}
-                offers.append(dict(
-                    id=ro['id'],
-                    domain=ro['domain'],
-                    title=ro['title'],
-                    merchantID=ro['merchant_id'],
-                    scheduleTime=ro['schedule_time'],
-                    priceMinor=ro['price_minor'],
-                    value=money(ro['price_minor']),
-                    currency=ro['currency'],
-                    meta=meta,
-                    resources=resources
-                ))
-
-            matcher = DeterministicCatalogMatcher()
-            matched_res = matcher.match(member_constraints, offers, group_size=len(members))
-            explainer = GroupPlanExplainer()
-            explanation = explainer.explain(matched_res['matches'], matched_res['conflicts'], member_constraints)
-
-            return {
-                'groupID': group_id,
-                'domain': domain,
-                'groupSize': len(members),
-                'memberCount': len(members),
-                'confirmedCount': len(members) - len(unconfirmed_members),
-                'unconfirmedMembers': unconfirmed_members,
-                'allConfirmed': len(unconfirmed_members) == 0,
-                'matches': matched_res['matches'],
-                'conflicts': matched_res['conflicts'],
-                'explanation': explanation
-            }
-
-    def initiate_contribution_order(self, participant_id, group_id):
-        if not self.paypal:
-            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
-
-        now = time.time()
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active or active['state'] != 'AWAITING_AUTHORIZATIONS':
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-            if now > active['hold_deadline']:
-                raise BookingError('HOLD_DEADLINE_EXPIRED', 409)
-
-            contrib = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'],
-                purchase_contributions.c.participant_id == participant_id)).mappings().first()
-            if not contrib:
-                raise BookingError('CONTRIBUTION_NOT_FOUND', 404)
-            if not contrib['consent_given_at']:
-                raise BookingError('CONSENT_REQUIRED', 400)
-
-            if contrib['order_id'] and contrib['state'] == 'AWAITING_APPROVAL':
-                return {
-                    'orderID': contrib['order_id'],
-                    'shareCents': contrib['share_cents'],
-                    'shareValue': money(contrib['share_cents']),
-                    'currency': active['currency'],
-                    'holdDeadline': active['hold_deadline']
-                }
-
-            offer = connection.execute(select(catalog_offers).where(
-                catalog_offers.c.id == active['offer_id'])).mappings().first()
-
-            create_request_id = contrib['create_request_id'] or f'collab-ord-{contrib["id"]}'
-
-        # Persist create_request_id before network call
-        with self.store.engine.begin() as connection:
-            connection.execute(update(purchase_contributions).where(
-                purchase_contributions.c.id == contrib['id']).values(
-                create_request_id=create_request_id))
-
-        # NO DB transaction held across PayPal call
-        payload = {
-            'intent': 'AUTHORIZE',
-            'purchase_units': [{
-                'reference_id': contrib['id'],
-                'description': f"Group share for {offer['title']}",
-                'custom_id': contrib['id'],
-                'amount': {
-                    'currency_code': offer['currency'],
-                    'value': money(contrib['share_cents'])
-                }
-            }]
-        }
-        if offer.get('merchant_id'):
-            payload['purchase_units'][0]['payee'] = {'merchant_id': offer['merchant_id']}
-
-        order = self.paypal.create_order(payload, create_request_id)
-        order_id = order['id']
-
-        # Persist order_id and transition state to AWAITING_APPROVAL
-        with self.store.engine.begin() as connection:
-            connection.execute(update(purchase_contributions).where(
-                purchase_contributions.c.id == contrib['id']).values(
-                order_id=order_id, state='AWAITING_APPROVAL'))
-
-        return {
-            'orderID': order_id,
-            'shareCents': contrib['share_cents'],
-            'shareValue': money(contrib['share_cents']),
-            'currency': offer['currency'],
-            'holdDeadline': active['hold_deadline']
-        }
-
-    def authorize_contribution(self, participant_id, group_id):
-        if not self.paypal:
-            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
-
-        now = time.time()
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active or active['state'] != 'AWAITING_AUTHORIZATIONS':
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-            if now > active['hold_deadline']:
-                raise BookingError('HOLD_DEADLINE_EXPIRED', 409)
-
-            contrib = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'],
-                purchase_contributions.c.participant_id == participant_id)).mappings().first()
-            if not contrib:
-                raise BookingError('CONTRIBUTION_NOT_FOUND', 404)
-            if not contrib['order_id']:
-                raise BookingError('ORDER_NOT_INITIATED', 400)
-
-            if contrib['state'] == 'AUTHORIZED' and contrib['authorization_id']:
-                return self.view(participant_id, group_id)
-
-            auth_request_id = contrib['authorize_request_id'] or f'collab-auth-{contrib["id"]}'
-
-        # Persist authorize_request_id before network call
-        with self.store.engine.begin() as connection:
-            connection.execute(update(purchase_contributions).where(
-                purchase_contributions.c.id == contrib['id']).values(
-                authorize_request_id=auth_request_id))
-
-        # NO DB transaction held across PayPal call
-        auth_resp = self.paypal.authorize_order(contrib['order_id'], auth_request_id)
-
-        try:
-            pu = auth_resp.get('purchase_units', [{}])[0]
-            authorizations = pu.get('payments', {}).get('authorizations', [])
-            auth_id = authorizations[0]['id']
-        except (KeyError, IndexError, TypeError):
-            auth_id = auth_resp.get('id')
-
-        if not auth_id:
-            raise BookingError('AUTHORIZATION_FAILED', 502)
-
-        # Update state in DB and check if all members are authorized
-        with self.store.engine.begin() as connection:
-            connection.execute(update(purchase_contributions).where(
-                purchase_contributions.c.id == contrib['id']).values(
-                authorization_id=auth_id, state='AUTHORIZED'))
-
-            all_contribs = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-
-            if all(c['state'] == 'AUTHORIZED' for c in all_contribs):
-                connection.execute(update(shared_purchases).where(
-                    shared_purchases.c.id == active['id']).values(state='FINALIZING'))
-
-        return self.view(participant_id, group_id)
-
-    def reconcile_contribution(self, participant_id, group_id):
-        if not self.paypal:
-            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
-
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active:
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-            contrib = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'],
-                purchase_contributions.c.participant_id == participant_id)).mappings().first()
-            if not contrib or not contrib['order_id']:
-                raise BookingError('ORDER_NOT_INITIATED', 400)
-
-        # Reconcile order outside DB transaction
-        order = self.paypal.get_order(contrib['order_id'])
-        pu = order.get('purchase_units', [{}])[0]
-        authorizations = pu.get('payments', {}).get('authorizations', [])
-
-        if authorizations:
-            auth_id = authorizations[0]['id']
-            with self.store.engine.begin() as connection:
-                connection.execute(update(purchase_contributions).where(
-                    purchase_contributions.c.id == contrib['id']).values(
-                    authorization_id=auth_id, state='AUTHORIZED'))
-                all_contribs = connection.execute(select(purchase_contributions).where(
-                    purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-                if all(c['state'] == 'AUTHORIZED' for c in all_contribs):
-                    connection.execute(update(shared_purchases).where(
-                        shared_purchases.c.id == active['id']).values(state='FINALIZING'))
-
-        return self.view(participant_id, group_id)
-
-    def void_booking(self, participant_id, group_id):
-        if not self.paypal:
-            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
-
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active:
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-            contribs = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-
-        # Void any authorized contributions outside DB transaction
-        for c in contribs:
-            if c['authorization_id'] and c['state'] == 'AUTHORIZED':
-                void_req_id = c['void_request_id'] or f'collab-void-{c["id"]}'
-                with self.store.engine.begin() as connection:
-                    connection.execute(update(purchase_contributions).where(
-                        purchase_contributions.c.id == c['id']).values(void_request_id=void_req_id))
-                try:
-                    self.paypal.void_authorization(c['authorization_id'], void_req_id)
-                except Exception:
-                    pass
-
-        # Release inventory and mark cancelled/voided
-        with self.store.engine.begin() as connection:
-            for c in contribs:
-                if c['state'] in ('AUTHORIZED', 'AWAITING_APPROVAL', 'ACCEPTED', 'PENDING_CONSENT'):
-                    connection.execute(update(purchase_contributions).where(
-                        purchase_contributions.c.id == c['id']).values(state='VOIDED'))
-
-            connection.execute(update(catalog_resources).where(
-                catalog_resources.c.held_by_purchase_id == active['id']).values(
-                state='FREE', held_by_purchase_id=None, held_until=None))
-
-            connection.execute(update(shared_purchases).where(
-                shared_purchases.c.id == active['id']).values(state='CANCELLED'))
-
-        return dict(groupID=group_id, purchaseID=active['id'], state='CANCELLED', hasBooking=False)
-
-    def finalize_booking(self, participant_id, group_id):
-        if not self.paypal:
-            raise BookingError('PAYPAL_NOT_CONFIGURED', 503)
-
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active or active['state'] not in ('FINALIZING', 'AWAITING_AUTHORIZATIONS'):
-                raise BookingError('NO_FINALIZING_BOOKING', 400)
-
-            contribs = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-
-            if not all(c['state'] in ('AUTHORIZED', 'CAPTURED') for c in contribs):
-                raise BookingError('ALL_AUTHORIZATIONS_REQUIRED', 400)
-
-            offer = connection.execute(select(catalog_offers).where(
-                catalog_offers.c.id == active['offer_id'])).mappings().first()
-
-        # Fenced claim
-        claim_token = identifier()
-        with self.store.engine.begin() as connection:
-            current_active = connection.execute(select(shared_purchases).where(
-                shared_purchases.c.id == active['id'])).mappings().first()
-            if current_active['state'] == 'CONFIRMED':
-                return self.view(participant_id, group_id)
-            connection.execute(update(shared_purchases).where(
-                shared_purchases.c.id == active['id']).values(
-                state='FINALIZING', fenced_claim_token=claim_token))
-
-        # Sequentially capture authorized contributions
-        captured_so_far = []
-        for c in contribs:
-            if c['state'] == 'CAPTURED' and c['capture_id']:
-                captured_so_far.append(c)
-                continue
-
-            cap_req_id = c['capture_request_id'] or f'collab-cap-{c["id"]}'
-            with self.store.engine.begin() as connection:
-                connection.execute(update(purchase_contributions).where(
-                    purchase_contributions.c.id == c['id']).values(
-                    capture_request_id=cap_req_id))
-
-            payload = {
-                'amount': {
-                    'currency_code': active['currency'],
-                    'value': money(c['share_cents'])
-                },
-                'is_final_capture': True
-            }
-
-            try:
-                cap_res = self.paypal.capture_authorization(c['authorization_id'], payload, cap_req_id)
-                cap_id = cap_res['id']
-                with self.store.engine.begin() as connection:
-                    connection.execute(update(purchase_contributions).where(
-                        purchase_contributions.c.id == c['id']).values(
-                        capture_id=cap_id, state='CAPTURED'))
-                captured_so_far.append(dict(c, capture_id=cap_id, state='CAPTURED'))
-            except Exception as e:
-                now = time.time()
-                for cap_item in captured_so_far:
-                    ref_req_id = f'collab-ref-{cap_item["id"]}'
-                    with self.store.engine.begin() as connection:
-                        connection.execute(insert(group_recovery_tasks).values(
-                            id=identifier(), purchase_id=active['id'], contribution_id=cap_item['id'],
-                            action='REFUND', target_id=cap_item['capture_id'], state='PENDING',
-                            attempt_count=1, last_error=str(e), updated_at=now))
-                    try:
-                        self.paypal.refund_capture(cap_item['capture_id'], {}, ref_req_id)
-                    except Exception:
-                        pass
-
-                for uncap in contribs:
-                    if uncap['id'] not in [x['id'] for x in captured_so_far] and uncap['authorization_id']:
-                        void_req_id = f'collab-void-{uncap["id"]}'
-                        with self.store.engine.begin() as connection:
-                            connection.execute(insert(group_recovery_tasks).values(
-                                id=identifier(), purchase_id=active['id'], contribution_id=uncap['id'],
-                                action='VOID', target_id=uncap['authorization_id'], state='PENDING',
-                                attempt_count=1, last_error=str(e), updated_at=now))
-                        try:
-                            self.paypal.void_authorization(uncap['authorization_id'], void_req_id)
-                        except Exception:
-                            pass
-
-                with self.store.engine.begin() as connection:
-                    connection.execute(update(catalog_resources).where(
-                        catalog_resources.c.held_by_purchase_id == active['id']).values(
-                        state='FREE', held_by_purchase_id=None, held_until=None))
-                    connection.execute(update(shared_purchases).where(
-                        shared_purchases.c.id == active['id']).values(state='CANCELLED'))
-
-                raise BookingError('PARTIAL_CAPTURE_FAILED_REFUNDED', 502)
-
-        # All captures succeeded: Issue private tickets & assign resources as BOOKED
-        now = time.time()
-        with self.store.engine.begin() as connection:
-            for c in contribs:
-                if c['assigned_resource_id']:
-                    connection.execute(update(catalog_resources).where(
-                        catalog_resources.c.id == c['assigned_resource_id']).values(
-                        state='BOOKED', held_until=None))
-
-                ticket_code = f'TICKET-{active["offer_id"]}-{secrets.token_hex(6).upper()}'
-                connection.execute(insert(group_tickets).values(
-                    id=identifier(), purchase_id=active['id'], contribution_id=c['id'],
-                    participant_id=c['participant_id'], resource_id=c['assigned_resource_id'],
-                    ticket_code=ticket_code, issued_at=now))
-
-            connection.execute(update(shared_purchases).where(
-                shared_purchases.c.id == active['id']).values(
-                state='CONFIRMED', fenced_claim_token=None))
-
+        from booking_lease import claim_booking
+        purchase = self.payments.purchase_for(participant_id, group_id)
+        with claim_booking(self.store, purchase['id']) as lease:
+            with lease.write() as connection:
+                current = latest_purchase(connection, group_id)
+                if current['state'] != 'AWAITING_AUTHORIZATIONS' or current['hold_deadline'] <= time.time():
+                    raise BookingError('BOOKING_NOT_ACCEPTING_CONSENT')
+                contribution = connection.execute(select(purchase_contributions).where(
+                    purchase_contributions.c.purchase_id == purchase['id'],
+                    purchase_contributions.c.participant_id == participant_id)).mappings().one()
+                if not contribution['consent_given_at']:
+                    connection.execute(update(purchase_contributions).where(purchase_contributions.c.id == contribution['id']).values(
+                        state='ACCEPTED', consent_given_at=time.time()))
         return self.view(participant_id, group_id)
 
     def get_my_ticket(self, participant_id, group_id):
         with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = connection.execute(select(shared_purchases).where(
-                shared_purchases.c.group_id == group_id,
-                shared_purchases.c.state == 'CONFIRMED'
-            ).order_by(shared_purchases.c.created_at.desc())).mappings().first()
-            if not active:
+            member_group(connection, participant_id, group_id)
+            purchase = latest_purchase(connection, group_id)
+            if not purchase or purchase['state'] != 'CONFIRMED':
                 raise BookingError('NO_CONFIRMED_BOOKING', 404)
-
-            ticket = connection.execute(select(group_tickets).where(
-                group_tickets.c.purchase_id == active['id'],
+            workflow = connection.execute(select(group_workflows).where(group_workflows.c.purchase_id == purchase['id'])).mappings().one()
+            if workflow['review_required']:
+                raise BookingError('LEGACY_PURCHASE_REQUIRES_REVIEW')
+            ticket = connection.execute(select(group_tickets).where(group_tickets.c.purchase_id == purchase['id'],
                 group_tickets.c.participant_id == participant_id)).mappings().first()
             if not ticket:
                 raise BookingError('TICKET_NOT_FOUND', 404)
+            contribution = connection.execute(select(purchase_contributions).where(
+                purchase_contributions.c.id == ticket['contribution_id'])).mappings().one()
+            if contribution['state'] != 'CAPTURED':
+                raise BookingError('PAYMENT_NOT_COMPLETED', 403)
+            offer = connection.execute(select(catalog_offers).where(catalog_offers.c.id == purchase['offer_id'])).mappings().one()
+            label = connection.execute(select(catalog_resources.c.label).where(catalog_resources.c.id == ticket['resource_id'])).scalar()
+            return dict(ticketID=ticket['id'], ticketCode=ticket['ticket_code'], participantID=participant_id,
+                alias=contribution['alias'], title=offer['title'], domain=offer['domain'], scheduleTime=offer['schedule_time'],
+                assignedResource=label, shareCents=contribution['share_cents'], shareValue=money(contribution['share_cents']),
+                currency=purchase['currency'], issuedAt=ticket['issued_at'], captureID=contribution['capture_id'],
+                policy=purchase['policy'], inventorySource='controlled_local_catalog')
 
-            contrib = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.id == ticket['contribution_id'])).mappings().first()
-            offer = connection.execute(select(catalog_offers).where(
-                catalog_offers.c.id == active['offer_id'])).mappings().first()
-            resource = connection.execute(select(catalog_resources).where(
-                catalog_resources.c.id == ticket['resource_id'])).mappings().first()
+    def submit_preference(self, *args, **kwargs):
+        return self.planning.submit_preference(*args, **kwargs)
 
-            return {
-                'ticketID': ticket['id'],
-                'ticketCode': ticket['ticket_code'],
-                'participantID': participant_id,
-                'alias': contrib['alias'],
-                'title': offer['title'],
-                'domain': offer['domain'],
-                'scheduleTime': offer['schedule_time'],
-                'assignedResource': resource['label'] if resource else None,
-                'shareCents': contrib['share_cents'],
-                'shareValue': money(contrib['share_cents']),
-                'currency': active['currency'],
-                'issuedAt': ticket['issued_at'],
-                'policy': active['policy']
-            }
+    def confirm_preference(self, *args, **kwargs):
+        return self.planning.confirm_preference(*args, **kwargs)
 
-    def add_friend(self, organizer_id, group_id, alias='Friend'):
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, organizer_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            if group['organizer_id'] != organizer_id:
-                raise BookingError('ORGANIZER_REQUIRED', 403)
-            active = self._get_active_purchase(connection, group_id)
-            if active and active['frozen_at']:
-                raise BookingError('ROSTER_ALREADY_FROZEN', 409)
-            member_count = connection.execute(select(func.count()).select_from(group_memberships).where(
-                group_memberships.c.group_id == group_id)).scalar_one()
-            if member_count >= 4:
-                raise BookingError('GROUP_MAX_CAPACITY', 400)
+    def get_group_plan(self, *args, **kwargs):
+        return self.planning.get_group_plan(*args, **kwargs)
 
-        friend_rec, _ = self.store.new_participant()
-        now = time.time()
-        with self.store.engine.begin() as connection:
-            connection.execute(insert(group_memberships).values(
-                id=identifier(), group_id=group_id, participant_id=friend_rec['id'], joined_at=now))
-        self.set_profile(friend_rec['id'], group_id, alias or f'Member {member_count + 1}')
-        return dict(success=True, participantID=friend_rec['id'], alias=alias or f'Member {member_count + 1}')
+    def initiate_contribution_order(self, *args):
+        return self.payments.initiate(*args)
 
-    def simulate_authorizations(self, organizer_id, group_id):
-        with self.store.engine.begin() as connection:
-            group = self._member_group(connection, organizer_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active:
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-            now = time.time()
-            contribs = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-            for c in contribs:
-                if c['state'] != 'AUTHORIZED':
-                    auth_id = f"AUTH-SANDBOX-{secrets.token_hex(4).upper()}"
-                    order_id = f"ORD-SANDBOX-{secrets.token_hex(4).upper()}"
-                    connection.execute(update(purchase_contributions).where(
-                        purchase_contributions.c.id == c['id']).values(
-                        order_id=order_id, authorization_id=auth_id,
-                        state='AUTHORIZED', consent_given_at=now))
-            connection.execute(update(shared_purchases).where(
-                shared_purchases.c.id == active['id']).values(state='FINALIZING'))
-        return self.view(organizer_id, group_id)
+    def authorize_contribution(self, *args):
+        return self.payments.authorize(*args)
 
-    def get_liquidity_profiles(self, participant_id, group_id):
-        with self.store.engine.connect() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            members = connection.execute(select(
-                group_memberships.c.participant_id,
-                group_member_profiles.c.alias
-            ).select_from(
-                group_memberships.outerjoin(
-                    group_member_profiles,
-                    (group_member_profiles.c.group_id == group_memberships.c.group_id) &
-                    (group_member_profiles.c.participant_id == group_memberships.c.participant_id)
-                )
-            ).where(group_memberships.c.group_id == group_id).order_by(group_memberships.c.joined_at)).mappings().all()
+    def reconcile_contribution(self, *args):
+        return self.payments.reconcile(*args)
 
-            bank_configs = [
-                {"bank": "Chase Premier Checking (****4892)", "balanceCents": 24000, "verified": True},
-                {"bank": "Capital One 360 (****8110)", "balanceCents": 15000, "verified": True},
-                {"bank": "Wells Fargo Everyday (****1042)", "balanceCents": 9500, "verified": True},
-                {"bank": "Citi Priority Checking (****3309)", "balanceCents": 31000, "verified": True},
-            ]
+    def finalize_booking(self, *args):
+        return self.payments.finalize(*args)
 
-            profiles = []
-            for i, m in enumerate(members):
-                cfg = bank_configs[i % len(bank_configs)]
-                profiles.append({
-                    "participantID": m['participant_id'],
-                    "alias": m['alias'] or f"Member {i + 1}",
-                    "linkedBank": cfg['bank'],
-                    "balanceCents": cfg['balanceCents'],
-                    "balanceValue": money(cfg['balanceCents']),
-                    "isVerified": cfg['verified'],
-                    "isSelf": m['participant_id'] == participant_id
-                })
-
-            return {"groupID": group_id, "profiles": profiles}
-
-    def autonomous_preflight_and_reserve(self, participant_id, group_id, simulate_deficit=False):
-        with self.store.engine.begin() as connection:
-            group = self._member_group(connection, participant_id, group_id)
-            if not group:
-                raise BookingError('GROUP_NOT_FOUND', 404)
-            active = self._get_active_purchase(connection, group_id)
-            if not active:
-                raise BookingError('NO_ACTIVE_BOOKING', 400)
-
-            contribs = connection.execute(select(purchase_contributions).where(
-                purchase_contributions.c.purchase_id == active['id'])).mappings().all()
-
-            if simulate_deficit and len(contribs) >= 1:
-                deficit_contrib = contribs[-1]
-                required_share_cents = deficit_contrib['share_cents']
-                insufficient_balance_cents = max(500, required_share_cents - 400)
-                shortfall_cents = required_share_cents - insufficient_balance_cents
-
-                return {
-                    "status": "PREFLIGHT_FAILED",
-                    "code": "422_INSUFFICIENT_FUNDS",
-                    "failedParticipant": {
-                        "participantID": deficit_contrib['participant_id'],
-                        "alias": deficit_contrib['alias'],
-                        "bank": "Wells Fargo Everyday (****1042)",
-                        "availableBalanceCents": insufficient_balance_cents,
-                        "availableBalanceValue": money(insufficient_balance_cents),
-                        "requiredShareCents": required_share_cents,
-                        "requiredShareValue": money(required_share_cents),
-                        "shortfallCents": shortfall_cents,
-                        "shortfallValue": money(shortfall_cents)
-                    },
-                    "exactFailureCause": f"Bank pre-check rejected hold: Account has ${money(insufficient_balance_cents)} USD available, which is insufficient for the ${money(required_share_cents)} USD required share (shortfall: -${money(shortfall_cents)} USD).",
-                    "safeRedirect": {
-                        "actionRequired": "RESOLVE_DEFICIT",
-                        "options": [
-                            {"action": "SWITCH_INSTRUMENT", "label": "Switch Payment Method / Backup Card"},
-                            {"action": "AI_BUDGET_REVISE", "label": "Ask AI Concierge to Find Cheaper Show (<$12)"},
-                            {"action": "SAFE_RELEASE", "label": "Cancel & Safely Release Group Hold"}
-                        ]
-                    },
-                    "safeguardNotice": "Zero funds were captured. All other participants' holds remain completely protected."
-                }
-
-            now = time.time()
-            verifications = []
-            for c in contribs:
-                auth_id = f"AUTH-SANDBOX-{secrets.token_hex(4).upper()}"
-                order_id = f"ORD-SANDBOX-{secrets.token_hex(4).upper()}"
-                connection.execute(update(purchase_contributions).where(
-                    purchase_contributions.c.id == c['id']).values(
-                    order_id=order_id, authorization_id=auth_id,
-                    state='AUTHORIZED', consent_given_at=now))
-                verifications.append({
-                    "participantID": c['participant_id'],
-                    "alias": c['alias'],
-                    "amount": f"${money(c['share_cents'])} USD",
-                    "authID": auth_id,
-                    "status": "RESERVED_AUTONOMOUSLY"
-                })
-
-            connection.execute(update(shared_purchases).where(
-                shared_purchases.c.id == active['id']).values(state='FINALIZING'))
-
-        return {
-            "status": "PREFLIGHT_SUCCESS",
-            "message": f"Pre-flight liquidity passed for all {len(contribs)} collaborators. Cash holds reserved autonomously with PayPal Sandbox under intent='AUTHORIZE'.",
-            "verifications": verifications,
-            "booking": self.view(participant_id, group_id)
-        }
-
-    def run_demo(self, participant_id, scenario='happy_path', domain='movie'):
-        """High-novelty interactive judge showcase runner.
-        Simulates multi-buyer agreement, AI constraint negotiation, integer-cent allocation,
-        PayPal sandbox authorization holds, and either:
-        - happy_path: Sequential capture fulfillment & private verifiable ticket issuance
-        - chaos_failure: Intentional capture decline triggering distributed compensatory rollback
-        """
-        now = time.time()
-        telemetry = []
-
-        # 1. Roster Assembly: Alice + Bob + Charlie
-        group_id = identifier()
-        group_name = "Sci-Fi Screening Squad" if domain == 'movie' else "Emerald Kayak Expedition"
-        bob_rec, _ = self.store.new_participant()
-        charlie_rec, _ = self.store.new_participant()
-        bob_id = bob_rec['id']
-        charlie_id = charlie_rec['id']
-
-        with self.store.engine.begin() as connection:
-            connection.execute(insert(workshop_groups).values(
-                id=group_id, name=group_name, organizer_id=participant_id,
-                invite_token=secrets.token_urlsafe(32), workshop_id=None, created_at=now))
-            connection.execute(insert(group_memberships).values(
-                id=identifier(), group_id=group_id, participant_id=participant_id, joined_at=now))
-            connection.execute(insert(group_memberships).values(
-                id=identifier(), group_id=group_id, participant_id=bob_id, joined_at=now + 1))
-            connection.execute(insert(group_memberships).values(
-                id=identifier(), group_id=group_id, participant_id=charlie_id, joined_at=now + 2))
-
-        self.set_profile(participant_id, group_id, "Alice (Organizer)")
-        self.set_profile(bob_id, group_id, "Bob")
-        self.set_profile(charlie_id, group_id, "Charlie")
-
-        telemetry.append({
-            "stage": "1. Multi-Party Roster Assembly",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "details": f"Group '{group_name}' formed. Alice established session as organizer; Bob and Charlie joined with unique participant cryptokeys."
-        })
-
-        # 2. Natural Language Constraints & AI Reconciliation
-        if domain == 'movie':
-            pref_alice = "Sci-Fi movie on Friday or Saturday evening, budget under $20"
-            pref_bob = "Cosmic Odyssey on Friday around 7pm, fine up to $22"
-            pref_charlie = "Friday night sci-fi after 6pm, vegan snacks, budget under $18"
-            offer_id = 'movie-cosmic-odyssey-fri'
-            resource_ids = ['res-movie-cosmic-odyssey-fri-A1', 'res-movie-cosmic-odyssey-fri-A2', 'res-movie-cosmic-odyssey-fri-A3']
-        else:
-            pref_alice = "Kayak excursion on Saturday morning under $40"
-            pref_bob = "Cascade Emerald River paddle, flexible budget"
-            pref_charlie = "Saturday morning outdoor adventure under $35"
-            offer_id = 'excursion-kayak-canyon-sat'
-            resource_ids = ['res-excursion-kayak-canyon-sat-P1', 'res-excursion-kayak-canyon-sat-P2', 'res-excursion-kayak-canyon-sat-P3']
-
-        self.submit_preference(participant_id, group_id, pref_alice)
-        self.submit_preference(bob_id, group_id, pref_bob)
-        self.submit_preference(charlie_id, group_id, pref_charlie)
-
-        for pid, b_cents in [(participant_id, 2000), (bob_id, 2200), (charlie_id, 1800)]:
-            self.confirm_preference(pid, group_id, {
-                "budget_cents": b_cents,
-                "preferred_days": ["Friday", "Saturday"],
-                "time_window": {"earliest": "18:00", "latest": "22:00", "finish_before": "23:00"}
-            })
-
-        plan = self.get_group_plan(participant_id, group_id, domain)
-        telemetry.append({
-            "stage": "2. AI Preference Interpretation & Catalog Matching",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "details": f"AI evaluated 3 constraints. Reconciled budget constraint (<= $18.00), matched offer '{offer_id}', and verified 3 adjacent resources available with zero hallucinations."
-        })
-
-        # Reset resource states if previously reserved so demo is guaranteed clean
-        with self.store.engine.begin() as connection:
-            connection.execute(update(catalog_resources).where(
-                catalog_resources.c.id.in_(resource_ids)).values(
-                state='FREE', held_by_purchase_id=None, held_until=None))
-
-        # 3. Server-Owned Authoritative Quote & 15m Inventory Hold
-        quote_info = self.quote(participant_id, group_id, offer_id, resource_ids)
-        shares = quote_info['shares']
-        total_value = quote_info['totalValue']
-        frozen = self.freeze(participant_id, group_id, offer_id, resource_ids)
-        purchase_id = frozen['purchaseID']
-
-        telemetry.append({
-            "stage": "3. Exact Cent Allocation & Cryptographic Hold",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "details": f"Total: ${total_value} USD. Allocated exact integer cents across 3 members: " +
-                       ", ".join([f"${s['shareValue']}" for s in shares]) +
-                       ". 15-minute lease lock placed on inventory with automatic TTL fencing."
-        })
-
-        # 4. Independent PayPal Sandbox Authorizations (intent=AUTHORIZE)
-        self.give_consent(participant_id, group_id)
-        self.give_consent(bob_id, group_id)
-        self.give_consent(charlie_id, group_id)
-
-        member_orders = []
-        with self.store.engine.begin() as connection:
-            for idx, (m_id, alias) in enumerate([(participant_id, "Alice"), (bob_id, "Bob"), (charlie_id, "Charlie")]):
-                auth_id = f"AUTH-SANDBOX-{secrets.token_hex(4).upper()}"
-                order_id = f"ORD-SANDBOX-{secrets.token_hex(4).upper()}"
-                connection.execute(update(purchase_contributions).where(
-                    purchase_contributions.c.purchase_id == purchase_id,
-                    purchase_contributions.c.participant_id == m_id).values(
-                    order_id=order_id, authorization_id=auth_id, state='AUTHORIZED',
-                    consent_given_at=now + idx))
-                member_orders.append(dict(alias=alias, orderID=order_id, authID=auth_id))
-
-            connection.execute(update(shared_purchases).where(
-                shared_purchases.c.id == purchase_id).values(state='FINALIZING'))
-
-        telemetry.append({
-            "stage": "4. Independent PayPal Sandbox Authorizations",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "details": f"Each participant independently approved PayPal Sandbox authorization under intent='AUTHORIZE'. " +
-                       f"Funds held on buyer payment instruments without transfer. Zero pooled consumer wallet risk."
-        })
-
-        # 5. Execution Scenario: Happy Path vs Chaos Recovery
-        if scenario == 'happy_path':
-            issued_tickets = []
-            with self.store.engine.begin() as connection:
-                offer_row = connection.execute(select(catalog_offers).where(
-                    catalog_offers.c.id == offer_id)).mappings().first()
-
-                connection.execute(update(catalog_resources).where(
-                    catalog_resources.c.id.in_(resource_ids)).values(state='BOOKED', held_until=None))
-
-                for idx, (m_id, alias) in enumerate([(participant_id, "Alice"), (bob_id, "Bob"), (charlie_id, "Charlie")]):
-                    cap_id = f"CAP-SANDBOX-{secrets.token_hex(4).upper()}"
-                    t_code = f"TICKET-{offer_id}-{secrets.token_hex(6).upper()}"
-                    connection.execute(update(purchase_contributions).where(
-                        purchase_contributions.c.purchase_id == purchase_id,
-                        purchase_contributions.c.participant_id == m_id).values(
-                        capture_id=cap_id, state='CAPTURED'))
-
-                    t_id = identifier()
-                    connection.execute(insert(group_tickets).values(
-                        id=t_id, purchase_id=purchase_id,
-                        contribution_id=connection.execute(select(purchase_contributions.c.id).where(
-                            purchase_contributions.c.purchase_id == purchase_id,
-                            purchase_contributions.c.participant_id == m_id)).scalar(),
-                        participant_id=m_id, resource_id=resource_ids[idx],
-                        ticket_code=t_code, issued_at=now))
-
-                    share_val = shares[idx]['shareValue']
-                    seat_val = connection.execute(select(catalog_resources.c.label).where(
-                        catalog_resources.c.id == resource_ids[idx])).scalar() or f"Place #{idx + 1}"
-                    issued_tickets.append({
-                        "ticketID": t_id,
-                        "ticketCode": t_code,
-                        "alias": alias,
-                        "title": offer_row['title'],
-                        "scheduleTime": offer_row['schedule_time'],
-                        "currency": offer_row['currency'],
-                        "issuedAt": now,
-                        "assignedResource": seat_val,
-                        "shareValue": share_val,
-                        "captureID": cap_id,
-                        "status": "VALID_ENTITLEMENT",
-                        "qrPayload": json.dumps({
-                            "t": t_code,
-                            "holder": alias,
-                            "seat": seat_val,
-                            "offer": offer_id,
-                            "capture": cap_id,
-                            "sig": secrets.token_hex(16)
-                        })
-                    })
-
-                connection.execute(update(shared_purchases).where(
-                    shared_purchases.c.id == purchase_id).values(
-                    state='CONFIRMED', fenced_claim_token=None))
-
-            telemetry.append({
-                "stage": "5. Sequential Capture & Cryptographic Fencing",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": "Fenced lease token validated. Sequentially captured Alice ($16.00), Bob ($16.00), Charlie ($16.00) using idempotent PayPal-Request-Id keys."
-            })
-
-            telemetry.append({
-                "stage": "6. Private Ticket Issuance & Receipt Ownership",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": "3 private verifiable digital passes issued. Each participant owns their own seat and payment receipt. Zero bank friend risk."
-            })
-
-            return {
-                "success": True,
-                "scenario": "happy_path",
-                "groupID": group_id,
-                "groupName": group_name,
-                "offerTitle": plan['matches'][0]['title'] if plan.get('matches') else offer_id,
-                "totalValue": total_value,
-                "currency": "USD",
-                "tickets": issued_tickets,
-                "telemetry": telemetry
-            }
-
-        else:
-            # CHAOS ENGINEERING: Charlie's capture declines!
-            alice_cap = f"CAP-SANDBOX-{secrets.token_hex(4).upper()}"
-            bob_cap = f"CAP-SANDBOX-{secrets.token_hex(4).upper()}"
-            charlie_auth = member_orders[2]['authID']
-
-            with self.store.engine.begin() as connection:
-                connection.execute(update(purchase_contributions).where(
-                    purchase_contributions.c.purchase_id == purchase_id,
-                    purchase_contributions.c.participant_id == participant_id).values(
-                    capture_id=alice_cap, state='CAPTURED'))
-                connection.execute(update(purchase_contributions).where(
-                    purchase_contributions.c.purchase_id == purchase_id,
-                    purchase_contributions.c.participant_id == bob_id).values(
-                    capture_id=bob_cap, state='CAPTURED'))
-
-                connection.execute(insert(group_recovery_tasks).values(
-                    id=identifier(), purchase_id=purchase_id,
-                    contribution_id=connection.execute(select(purchase_contributions.c.id).where(
-                        purchase_contributions.c.purchase_id == purchase_id,
-                        purchase_contributions.c.participant_id == participant_id)).scalar(),
-                    action='REFUND', target_id=alice_cap, state='COMPLETED',
-                    attempt_count=1, last_error='Compensatory rollback for Charlie decline', updated_at=now))
-
-                connection.execute(insert(group_recovery_tasks).values(
-                    id=identifier(), purchase_id=purchase_id,
-                    contribution_id=connection.execute(select(purchase_contributions.c.id).where(
-                        purchase_contributions.c.purchase_id == purchase_id,
-                        purchase_contributions.c.participant_id == bob_id)).scalar(),
-                    action='REFUND', target_id=bob_cap, state='COMPLETED',
-                    attempt_count=1, last_error='Compensatory rollback for Charlie decline', updated_at=now))
-
-                connection.execute(insert(group_recovery_tasks).values(
-                    id=identifier(), purchase_id=purchase_id,
-                    contribution_id=connection.execute(select(purchase_contributions.c.id).where(
-                        purchase_contributions.c.purchase_id == purchase_id,
-                        purchase_contributions.c.participant_id == charlie_id)).scalar(),
-                    action='VOID', target_id=charlie_auth, state='COMPLETED',
-                    attempt_count=1, last_error='Compensatory rollback for Charlie decline', updated_at=now))
-
-                connection.execute(update(catalog_resources).where(
-                    catalog_resources.c.id.in_(resource_ids)).values(
-                    state='FREE', held_by_purchase_id=None, held_until=None))
-
-                connection.execute(update(shared_purchases).where(
-                    shared_purchases.c.id == purchase_id).values(state='CANCELLED'))
-
-            telemetry.append({
-                "stage": "5. Partial Capture Failure Injected (Charlie 422 Declined)",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": "Charlie's capture returned 422 INSTRUMENT_DECLINED. Pipeline halted immediately to prevent partial fulfillment."
-            })
-
-            telemetry.append({
-                "stage": "6. Distributed Compensatory Recovery Executed",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": f"Alice capture ({alice_cap}) refunded: $16.00. Bob capture ({bob_cap}) refunded: $16.00. " +
-                           f"Charlie authorization ({charlie_auth}) voided. All 3 cinema seats unreserved back to FREE in catalog. " +
-                           f"Zero chargeback exposure for merchant. Zero loss for buyers."
-            })
-
-            return {
-                "success": True,
-                "scenario": "chaos_failure",
-                "groupID": group_id,
-                "groupName": group_name,
-                "offerTitle": plan['matches'][0]['title'] if plan.get('matches') else offer_id,
-                "totalValue": total_value,
-                "currency": "USD",
-                "recovery": {
-                    "alice": f"Auto-Refunded (${shares[0]['shareValue']}) [REF: {alice_cap}]",
-                    "bob": f"Auto-Refunded (${shares[1]['shareValue']}) [REF: {bob_cap}]",
-                    "charlie": f"Authorization Voided [AUTH: {charlie_auth}]",
-                    "inventory": f"3 seats {resource_ids} restored to FREE in catalog"
-                },
-                "telemetry": telemetry
-            }
-
-
+    def void_booking(self, *args):
+        return self.payments.cancel(*args)

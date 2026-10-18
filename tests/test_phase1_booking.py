@@ -200,8 +200,8 @@ class Phase1BookingTests(unittest.TestCase):
         group_id = self.create_group_with_member()
 
         # Set custom aliases
-        self.post(self.organizer, f'/api/groups/{group_id}/profile', {'alias': 'Alice'})
-        self.post(self.member, f'/api/groups/{group_id}/profile', {'alias': 'Bob'})
+        self.post(self.organizer, f'/api/groups/{group_id}/profile', {'alias': 'Alice', 'shareProgress': True})
+        self.post(self.member, f'/api/groups/{group_id}/profile', {'alias': 'Bob', 'shareProgress': True})
 
         offers = self.organizer.get('/api/catalog/offers?domain=movie').json['offers']
         target_offer = next((o for o in offers if o['id'] == 'movie-cosmic-odyssey-fri'), offers[0])
