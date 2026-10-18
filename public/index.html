@@ -234,6 +234,9 @@
                     </label>
                     <label for="pref-days">Days that work<input id="pref-days" placeholder="Any day, or friday, saturday">
                     </label>
+                    <label for="pref-soft" class="room-taste-field">What would make it your kind of experience?<input id="pref-soft" placeholder="science fiction, scenic hiking..." maxlength="1000">
+                      <small>Optional likes, separated by commas. Confirm them to inform group AI. Exclusions, allergies and accessibility requirements cannot be enforced through this field.</small>
+                    </label>
                   </div>
                   <details id="pref-advanced">
                     <summary>Fine-tune dates, times &amp; preferences</summary>
@@ -248,8 +251,6 @@
                       </label>
                       <label for="pref-finish">Finishes before<input id="pref-finish" type="time">
                       </label>
-                      <label for="pref-soft">Nice-to-haves<input id="pref-soft" placeholder="sci-fi, river...">
-                      </label>
                     </div>
                   </details>
                   <p id="pref-clarifications" class="fine">
@@ -262,6 +263,15 @@
                   </label>
                   <button id="room-find-matches" class="btn btn-ink" type="button">Find our common ground &#8594;</button>
                 </div>
+                <section class="room-ai-panel" aria-labelledby="room-ai-title">
+                  <p class="eyebrow">A PLAN WITH EVERYONE IN MIND</p>
+                  <h3 id="room-ai-title">Make the compromise visible.</h3>
+                  <p>First we verify every confirmed budget, time and place constraint. A local AI model then compares two ways to rank the eligible plans. Neither is a measure of happiness. Private likes stay on this server; no peer text or scores are shown.</p>
+                  <label for="room-ai-objective">How should we compare?<select id="room-ai-objective"><option value="compromise">Smallest worst modeled compromise</option><option value="average">Highest average modeled fit</option><option value="compare">Show both views, in schedule order</option></select></label>
+                  <button id="room-ai-recommend" class="btn btn-primary" type="button">Compare AI suggestions</button>
+                  <p id="room-ai-ranking-note" class="fine" role="status" aria-live="polite"></p>
+                  <div id="room-ai-actions" class="button-row"></div>
+                </section>
                 <div id="room-plan-results" class="room-matches" aria-live="polite">
                 </div>
                 <section class="rescue-card">

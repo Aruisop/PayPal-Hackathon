@@ -66,7 +66,7 @@ class Planning:
             resources = [{k: r[k] for k in ('id', 'label', 'row_label', 'col_number', 'state')}
                          for r in connection.execute(select(catalog_resources).where(
                              catalog_resources.c.offer_id == row['id'])).mappings()]
-            offers.append(dict(id=row['id'], domain=row['domain'], title=row['title'],
+            offers.append(dict(id=row['id'], domain=row['domain'], title=row['title'], description=row['description'],
                                merchantID=row['merchant_id'], scheduleTime=row['schedule_time'],
                                priceMinor=row['price_minor'], value=money(row['price_minor']),
                                currency=row['currency'], meta=json.loads(row['meta_json']), resources=resources))
@@ -243,9 +243,11 @@ class Planning:
                 base['nextAction'] = 'Each unconfirmed member should open their private preference helper and confirm their fields.'
                 return base
             offers = self._offers(connection, domain)
-        result = DeterministicCatalogMatcher().match(constraints, offers, len(members))
+        result = DeterministicCatalogMatcher().match(constraints, offers, len(members),
+                                                     own_index=members.index(participant_id))
         base.update(result)
-        base['explanation'] = GroupPlanExplainer().explain(result['matches'], result['conflicts'], constraints)
+        base['explanation'] = (GroupPlanExplainer().explain(result['matches'], result['conflicts'], constraints) if offers else
+                               'No upcoming experiences are listed in this category. Check another category or ask the organizer about new dates.')
         base['nextAction'] = ('The organizer can select a matching option and review its exact quote.' if result['matches'] else
                               'Members can edit only their own constraints, or choose another activity. No booking has been selected.')
         return base

@@ -1,0 +1,5 @@
+# Optional CPU embeddings. The application remains usable without these packages.
+# Python 3.10+; no PyTorch, GPU, hosted model or paid API key is required.
+numpy==2.2.6
+onnxruntime==1.23.2
+tokenizers==0.22.2

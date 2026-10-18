@@ -1,6 +1,6 @@
 # GroupPay: guided collaborative booking UI
 
-Built on Panchadip-128's `slice/3-collaborative-booking-and-equal-payments` at `41ec3d7`. The latest user-authorized redesign gives his collaborative booking a light workspace, illustrated discovery, guided steps, private planning, shared conversation, adjacent-place selection and individual approval. Workshops and the isolated solo lab remain. This is a UI-first review candidate for `Aruisop/PayPal-Hackathon` on `dev/aarya`, not an accepted release. It includes earlier Slice 3/backend integration repairs; the complete change is not frontend-only. AI integration code is present, but actual model execution remains unverified.
+Built on Panchadip-128's `slice/3-collaborative-booking-and-equal-payments` at `41ec3d7`. The latest user-authorized redesign gives his collaborative booking a light workspace, illustrated discovery, guided steps, private planning, shared conversation, adjacent-place selection and individual approval. Workshops and the isolated solo lab remain. This is a UI-first review candidate for `Aruisop/PayPal-Hackathon` on `dev/aarya`, not an accepted release. It includes earlier Slice 3/backend integration repairs; the complete change is not frontend-only. The subsequent recommendation candidate now has real server-local CPU inference and synthetic quality/latency evidence. Browser rendering, the separate on-device worker, live payments and human-rated group quality remain unverified.
 
 Read [Aarya_changes.md](Aarya_changes.md) for changes and evidence, [the showcase guide](HACKATHON_SHOWCASE.md) for a walkthrough, and [the original product proposal](docs/COLLABORATIVE_BOOKING_PRD.md) for context.
 
@@ -20,7 +20,29 @@ Configure `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` from the intended Busine
 
 **Gemini is optional.** Without `GEMINI_API_KEY`, the local helper extracts editable preferences and matches the trusted catalog. With a key, `GEMINI_MODEL` defaults to `gemini-2.5-flash`; model failure is disclosed as local fallback. Neither mode can confirm preferences, authorize payments or set prices for the user.
 
-## Optional AI integration: execution unverified
+## New: verified group recommendations with a local model
+
+No Gemini key or hosted inference service is needed. The app uses a small CPU embedding model, prepared once on the server:
+
+```powershell
+..\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt
+..\.venv\Scripts\python.exe -B model_assets.py prepare --model bge
+..\.venv\Scripts\python.exe -B server.py serve
+```
+
+On this workspace the optional packages and checked model assets are already prepared; restart the server after upgrading code or repairing assets. Do not change your existing `.env` or reset a database. A missing model leaves verified rules-based matching available.
+
+In a saved group, every member reviews and confirms their budget/time fields plus optional **What would make it your kind of experience?** likes. Click **Compare AI suggestions**. If no tastes are confirmed, use **Add or review my likes**, enter a short description, then **Confirm preferences & compare AI**; that confirmation continues the comparison automatically. The default, explicitly requested by the user, minimizes the worst modeled compromise; the selector also offers average fit and a neutral comparison in schedule order. Disagreement is labeled as a tradeoff to discuss. Rankings never select, reserve or pay automatically.
+
+**No eligible plan to compare yet** means the hard constraints filtered out this category before AI runs. The cards show each plan, your exact share, its time in your confirmed timezone, your own blockers and whether another member also needs to review. Use **Review my budget & availability**, **Find changes I can make**, or explicitly check the other category. A tradeoff preview is unsaved; your confirmation continues the comparison. A peer-only blocker requires that member's decision. For example, a two-person $100 excursion costs $50 each; a confirmed $20 ceiling cannot cover it. These prices are USD. No API key or retry can change that constraint.
+
+The server verifies all hard constraints before embedding confirmed taste tags. It computes each member's opportunity loss relative to their own best eligible option, then minimizes the descending loss vector lexicographically. It rereads roster, preferences and inventory after inference and rejects stale responses. Model requests neither download assets nor call an inference provider; private query vectors are not cached or returned.
+
+Real CPU tests compare keyword, MiniLM and BGE, with raw synthetic cases/results in [evaluation](evaluation/RESULTS.md). BGE with its documented instruction ranked a relevant item first in 16/16 answerable cases, but these labels are assistant-authored, not human-reviewed, and used in model selection. The exclusion guard declines five answerable cases; semantic retrieval did not reject unrelated requests. Group regret did not improve worst labeled regret over average fit in eight diagnostic groups. Do not describe these results as production accuracy or superiority over competitors.
+
+See [the algorithm and requirements](docs/RECOMMENDATION_DESIGN.md) and [the walkthrough](HACKATHON_SHOWCASE.md). This algorithm combines established ideas for this application; it is not claimed as a new mathematical fairness result.
+
+## Separate optional browser AI: execution still unverified
 
 On **Discover**, click **Enable on-device AI**, wait for the ready message, then describe a vibe such as "a peaceful outdoor adventure". Vibe Scout uses actual MiniLM sentence embeddings in a browser worker to rank the trusted catalog by meaning. It does not generate inventory, quotes, agreement scores or payment decisions. Budget and group-size controls provide discovery previews; the room checks actual confirmed constraints and availability.
 
@@ -73,6 +95,6 @@ node tests/test_ai_contract.cjs
 git diff --check
 ```
 
-The full 132 Python tests pass with mocked providers, including seven new Plan Rescue cases. Frontend contracts execute discovery, walkthrough, actual room callbacks, an unsaved rescue preview, explicit confirmation and the payment flow using mocked DOM/HTTP/SDK. AI contracts exercise loading/retry, catalog-only ranking validation and the actual worker handler with mocked embeddings. The isolated demo has 12 contract checks. These are not rendered-browser, real-model or live-payment results. Browser tooling currently fails during initialization; desktop/mobile, actual model inference, real multi-buyer Sandbox checkout, Gemini and PostgreSQL verification remain outstanding.
+The full 190 Python tests pass with mocked providers, including seven Plan Rescue cases and five additional no-match diagnosis regressions. Frontend contracts execute discovery, walkthrough, actual room callbacks, an unsaved rescue preview, explicit confirmation and the payment flow using mocked DOM/HTTP/SDK. AI contracts exercise loading/retry, catalog-only ranking validation and the actual worker handler with mocked embeddings. The isolated demo has 12 contract checks. Those contract tests use mocks. Separately, the native CPU benchmark executes actual model weights and the recommendation route on temporary synthetic groups. A jsdom/live temporary API test uses real BGE inference and checks taste onboarding, no-match diagnostics, explicit tradeoff confirmation, peer limits and roster invalidation; it does not render a browser. Browser tooling currently fails during initialization; desktop/mobile, browser-worker inference, real multi-buyer Sandbox checkout, Gemini and PostgreSQL verification remain outstanding.
 
-This snapshot is prepared for publication to [Aruisop/PayPal-Hackathon, dev/aarya](https://github.com/Aruisop/PayPal-Hackathon/tree/dev/aarya). Publication does not imply acceptance, merge or deployment. License selection and submission requirements still need team review.
+The UI snapshot fb07b49 was published to [Aruisop/PayPal-Hackathon, dev/aarya](https://github.com/Aruisop/PayPal-Hackathon/tree/dev/aarya). This checkpoint extends it with the user-authorized local AI recommendation and no-match usability changes; see Aarya_changes.md for scope and evidence. Publication does not imply acceptance, merge or deployment. License selection and submission requirements still need team review.

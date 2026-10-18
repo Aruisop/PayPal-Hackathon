@@ -133,6 +133,14 @@ class PreferenceInterpreter:
         for pref in ('sci-fi', 'thriller', 'drama', 'action', 'comedy', 'kayak', 'river', 'trek', 'mountain'):
             if pref in lower:
                 constraints['soft_preferences'].append(pref)
+        # Preserve common descriptive wording in the editable review. These are
+        # local extraction rules, not a model result or confirmed preference.
+        for pattern in (r'\bscience[ -]+fiction\b', r'\bsci[ -]?fi\b', r'\bspace opera\b',
+                        r'\bhiking\b', r'\bpaddling\b', r'\bpsychological mystery\b',
+                        r'\bemotional stor(?:y|ies)\b'):
+            match = re.search(pattern, lower)
+            if match and match.group() not in constraints['soft_preferences']:
+                constraints['soft_preferences'].append(match.group())
         if re.search(r'\bany\s+day\b', lower):
             constraints['preferred_days'] = []
         if re.search(r'\b(?:any\s*time|any\s+day\s+and\s+time)\b', lower):
@@ -190,13 +198,37 @@ class PreferenceInterpreter:
 
 
 class DeterministicCatalogMatcher:
-    def match(self, member_constraints, catalog_offers, group_size):
+    @staticmethod
+    def constraint_conflicts(c, share, offer):
+        """All structured failures for one member; also used by private diagnostics."""
+        schedule = datetime.fromisoformat(offer['scheduleTime'].replace('Z', '+00:00'))
+        local = schedule.astimezone(ZoneInfo(c['timezone']))
+        window, hhmm = c['time_window'], local.strftime('%H:%M')
+        end = local + timedelta(minutes=(offer.get('meta') or {}).get('runtime_min', 120))
+        checks = [
+            (c['budget_cents'] is not None and share > c['budget_cents'],
+             'BUDGET_EXCEEDED', 'This option exceeds a confirmed group budget.'),
+            (bool(c['dates']) and local.date().isoformat() not in c['dates'],
+             'SCHEDULE_DATE_MISMATCH', 'This option conflicts with a confirmed date.'),
+            (bool(c['preferred_days']) and local.strftime('%A').lower() not in c['preferred_days'],
+             'SCHEDULE_DAY_MISMATCH', 'This option conflicts with a confirmed day.'),
+            (bool(window.get('earliest')) and hhmm < window.get('earliest', '00:00'),
+             'SCHEDULE_TIME_EARLY', 'This option starts before a confirmed time window.'),
+            (bool(window.get('latest')) and hhmm > window.get('latest', '23:59'),
+             'SCHEDULE_TIME_LATE', 'This option starts after a confirmed time window.'),
+            (bool(window.get('finish_before')) and (end.date() != local.date() or end.strftime('%H:%M') > window.get('finish_before', '23:59')),
+             'SCHEDULE_FINISH_LATE', 'This option finishes after a confirmed deadline.')]
+        return [dict(type=kind, reason=reason) for failed, kind, reason in checks if failed]
+
+    def match(self, member_constraints, catalog_offers, group_size, *, own_index=None):
         if not 1 <= group_size <= 4 or len(member_constraints) != group_size:
             raise AIError('GROUP_SIZE_UNSUPPORTED')
+        if own_index is not None and (type(own_index) is not int or not 0 <= own_index < group_size):
+            raise ValueError('Invalid own member index')
         constraints = []
         for member in member_constraints:
             constraints.append(validate_constraints({k: v for k, v in member.items() if k in FIELDS}))
-        matches, conflicts = [], []
+        matches, conflicts, blocked = [], [], []
         for offer in catalog_offers:
             if offer.get('currency') != 'USD':
                 continue
@@ -219,36 +251,25 @@ class DeterministicCatalogMatcher:
                             break
                     if selected:
                         break
-            if len(selected) != group_size:
-                conflicts.append(dict(offerID=offer['id'], type='SEATS_UNAVAILABLE', reason='Insufficient adjacent seats or available places for the group.'))
-                continue
             total = offer['priceMinor'] * group_size if offer['domain'] == 'movie' else offer['priceMinor']
             shares = [total // group_size + (1 if i < total % group_size else 0) for i in range(group_size)]
             schedule = datetime.fromisoformat(offer['scheduleTime'].replace('Z', '+00:00'))
             if schedule.tzinfo is None:
                 continue
-            conflict = None
-            for index, c in enumerate(constraints):
-                local = schedule.astimezone(ZoneInfo(c['timezone']))
-                window = c['time_window']
-                hhmm = local.strftime('%H:%M')
-                end = local + timedelta(minutes=(offer.get('meta') or {}).get('runtime_min', 120))
-                if c['budget_cents'] is not None and shares[index] > c['budget_cents']:
-                    conflict = ('BUDGET_EXCEEDED', 'This option exceeds a confirmed group budget.')
-                elif c['dates'] and local.date().isoformat() not in c['dates']:
-                    conflict = ('SCHEDULE_DATE_MISMATCH', 'This option conflicts with a confirmed date.')
-                elif c['preferred_days'] and local.strftime('%A').lower() not in c['preferred_days']:
-                    conflict = ('SCHEDULE_DAY_MISMATCH', 'This option conflicts with a confirmed day.')
-                elif window.get('earliest') and hhmm < window['earliest']:
-                    conflict = ('SCHEDULE_TIME_EARLY', 'This option starts before a confirmed time window.')
-                elif window.get('latest') and hhmm > window['latest']:
-                    conflict = ('SCHEDULE_TIME_LATE', 'This option starts after a confirmed time window.')
-                elif window.get('finish_before') and (end.date() != local.date() or end.strftime('%H:%M') > window['finish_before']):
-                    conflict = ('SCHEDULE_FINISH_LATE', 'This option finishes after a confirmed deadline.')
-                if conflict:
-                    break
+            issues = [self.constraint_conflicts(c, shares[i], offer) for i, c in enumerate(constraints)]
+            capacity = len(selected) == group_size
+            conflict = (dict(type='SEATS_UNAVAILABLE', reason='Insufficient adjacent seats or available places for the group.')
+                        if not capacity else next((member[0] for member in issues if member), None))
             if conflict:
-                conflicts.append(dict(offerID=offer['id'], type=conflict[0], reason=conflict[1]))
+                conflicts.append(dict(offerID=offer['id'], **conflict))
+                if own_index is not None:
+                    own = constraints[own_index]
+                    blocked.append(dict(offerID=offer['id'], title=offer['title'], domain=offer['domain'],
+                        scheduleTime=offer['scheduleTime'], timezone=own['timezone'],
+                        localSchedule=schedule.astimezone(ZoneInfo(own['timezone'])).isoformat(),
+                        ownShareCents=shares[own_index], ownShareValue=f'{shares[own_index] // 100}.{shares[own_index] % 100:02d}',
+                        currency='USD', capacityAvailable=capacity, ownConflicts=issues[own_index],
+                        otherConstraintsBlock=any(member for i, member in enumerate(issues) if i != own_index)))
             else:
                 candidate = dict(offer)
                 candidate.update(proposedResourceIDs=[r['id'] for r in selected], shareCents=shares,
@@ -258,7 +279,11 @@ class DeterministicCatalogMatcher:
                 candidate['preferenceScore'] = sum(p.lower() in haystack for c in constraints for p in c['soft_preferences'])
                 matches.append(candidate)
         matches.sort(key=lambda o: (-o['preferenceScore'], o['scheduleTime'], o['id']))
-        return dict(matches=matches, conflicts=conflicts)
+        result = dict(matches=matches, conflicts=conflicts)
+        if own_index is not None:
+            # Only the caller's failures and a coarse peer-blocked flag leave this method.
+            result['blockedOptions'] = blocked
+        return result
 
 
 class GroupPlanExplainer:
@@ -268,7 +293,7 @@ class GroupPlanExplainer:
             amounts = ', '.join('$' + value for value in best['shareValues'])
             return f"Top recommendation: '{best['title']}'. Shares in roster order: {amounts} USD. All confirmed structured constraints are satisfied."
         if any(c['type'] == 'SEATS_UNAVAILABLE' for c in conflicts):
-            return 'Adjacent capacity conflict: no option fits all confirmed constraints. Choose another option or edit your own constraints.'
+            return 'No plan fits yet. Some options lack adjacent seats or available places; review each plan’s blockers or choose another activity.'
         if any(c['type'] == 'BUDGET_EXCEEDED' for c in conflicts):
-            return 'No option fits all confirmed budgets. Members may edit their own budget or choose another offering.'
+            return 'No plan fits yet. Some options exceed a confirmed budget; review each plan’s blockers. Members decide whether to edit their own limits.'
         return 'Schedule conflict detected or no suitable option. Members may edit their own dates or time window.'

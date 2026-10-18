@@ -12,6 +12,21 @@ Open http://localhost:8000 and press **Ctrl+F5**. The app keeps your existing da
 
 The lab stays in isolated memory, makes no backend/payment requests, does not change identities, and cannot reserve saved inventory. Reset/reload clears only that rehearsal. The AI search is real inference only after its ready message and a successful ranking; automated AI tests use mocked embeddings and do not prove it ran on your device.
 
+## Actual local-model group suggestions
+
+The optional CPU dependencies and BGE assets are prepared on this machine; after a code update restart the server, then Ctrl+F5. For a clean setup follow README's requirements-ai installation and `model_assets.py prepare --model bge` commands. No Gemini key is needed for this feature.
+
+If the result is **No eligible plan to compare yet**, read each blocked card before changing anything. The $100/$120 excursions cost $50/$60 each for two people. Your own blockers are identified privately; a peer blocker requires that person's review. **Find changes I can make** previews only verified own-preference edits. Confirm a preview only if it reflects your actual limits; this continues the comparison. **Check cinema nights instead** checks that category without changing preferences. No model key or AI retry overrides a confirmed budget.
+
+1. Use two separate browser profiles, join one saved group, and confirm flexible dates/times and adequate budgets independently.
+2. In each private review, enter positive descriptive likes in **What would make it your kind of experience?** For example one member likes science fiction, another likes acoustic drama. Explicitly confirm the fields. Blank likes are flexible and do not invent a ranking vote.
+3. Click **Compare AI suggestions**. If prompted, choose **Add or review my likes**, then explicitly **Confirm preferences & compare AI** to continue. The default minimizes the worst modeled compromise. Note the actual local model, number of members with tastes and measured server elapsed time. No action auto-selects or reserves a plan.
+4. Compare **Highest average modeled fit** and **Show both views**. A different ranking is a visible policy tradeoff, not evidence that one predicts happiness. When semantic favorites disagree, the screen says to discuss the tradeoff.
+5. Try a hard budget conflict: the model cannot bring an ineligible offer back. A single eligible option skips inference; missing tastes/model assets give an honest non-AI result. Negative/requirement-like tastes trigger clarification rather than pretending semantic similarity enforces them.
+6. Choose an eligible plan, review the exact quote and continue the existing individually approved Sandbox flow only when ready. Do not reset unresolved purchases.
+
+For solo real-inference evidence, run `benchmark_recommendations.py --model all --http` against temporary synthetic groups. This is not the isolated payment lab and is not a rendered-browser test. Read the failure cases in evaluation/RESULTS.md before recording. Do not present raw 16/16 retrieval as deployed workflow accuracy; the guard abstains on five answerable cases and unrelated requests remain unsupported.
+
 ## Saved group and Plan Rescue, two browser profiles
 
 1. Start a group from Discover. Copy its invite into a separate browser profile or another device. Ordinary tabs share one identity. Keep both windows open. Save each display name and sharing choice if desired.

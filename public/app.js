@@ -137,6 +137,7 @@ async function api(path, body) {
   if (!response.ok) {
     const messages = {
       PREFERENCES_NOT_CONFIRMED: 'Each member must confirm their own preferences before choosing a group experience.',
+      RECOMMENDATION_STALE: 'The group or available catalog changed while AI was ranking. Request a fresh recommendation; nothing was reserved.',
       GROUP_SIZE_UNSUPPORTED: 'Invite 1–3 friends, or open Judge Hub to rehearse alone.',
       LEGACY_PURCHASE_REQUIRES_REVIEW: 'This older booking requires merchant review. Its previous simulated or unvalidated state cannot prove payment.',
       ADJACENT_SEATS_REQUIRED: 'Choose adjacent seats in the same row and request a new quote.',

@@ -1102,6 +1102,26 @@ summary {
   gap:24px;
   align-items:start;
 }
+.room-taste-field {
+  grid-column:1 / -1;
+}
+.room-taste-field small {
+  display:block;
+  margin-top:8px;
+  font-weight:400;
+}
+.room-ai-panel {
+  margin:18px 24px;
+  padding:20px;
+  border:1px solid #dfe5fc;
+  border-radius:14px;
+  background:#f3f5ff;
+}
+.room-ai-panel>p:not(.eyebrow) {
+  margin:12px 0;
+  color:var(--muted);
+  font-size:12px;
+}
 .room-workspace>*,.planning-column,.booking-column {
   min-width:0;
 }
@@ -1287,6 +1307,18 @@ summary {
 }
 .room-match .fine {
   font-size:12px;
+}
+.room-blocked {
+  background:#faf8f1;
+  border-color:#e8dfc7;
+}
+.room-blocked ul {
+  padding-left:18px;
+  margin:12px 0 0;
+}
+.room-blocked li {
+  margin:7px 0;
+  line-height:1.6;
 }
 .rescue-card {
   margin:0 22px 24px;

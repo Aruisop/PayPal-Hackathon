@@ -1,3 +1,7 @@
+# Current server-local recommendation extension
+
+A subsequent user-authorized candidate adds actual CPU embeddings and constraint-first semantic regret/average comparisons for confirmed group tastes. This is separate from the browser-worker feature below. See [RECOMMENDATION_DESIGN.md](RECOMMENDATION_DESIGN.md) for the algorithm, privacy boundary, requirements and research; [the measured results](../evaluation/RESULTS.md) for actual inference, synthetic-label limits and failures. The browser-worker account below describes the earlier UI-first snapshot and still has no rendered-browser inference evidence.
+
 # Guided planning and key-free AI
 
 This extends Panchadip's Slice 3 collaborative booking rather than changing its financial protocol. The user explicitly requested the new presentation after the original-style integration. There is no new database migration, Python dependency, credential or payment adapter in this pass.

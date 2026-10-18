@@ -41,7 +41,7 @@
   const state = {group: null, booking: null, room: null, preference: null, offer: null, seats: [], quote: null,
     epoch: 0, sequence: 0, busy: false, approval: false, buttons: null, buttonKey: '', ticket: null,
     chatKey: '', poll: null, sdk: null, options: null, error: null,
-    draft: null, edited: false, rescues: []};
+    draft: null, edited: false, rescues: [], rescueCompare: false, pendingAI: false, comparing: false};
   const path = (id, suffix = '') => `/api/groups/${encodeURIComponent(id)}${suffix}`;
   const current = (id, epoch) => state.group?.id === id && state.epoch === epoch;
   const locked = () => state.busy || state.approval;
@@ -188,6 +188,10 @@
     $('btn-lock-freeze').disabled = locked() || frozen() || !organizer || !state.quote;
     $('room-quote-btn').disabled = locked() || frozen() || !organizer || !state.offer || state.seats.length !== state.group.memberCount;
     $('room-find-matches').disabled = locked() || frozen() || state.edited;
+    $('room-ai-recommend').disabled = locked() || frozen();
+    $('room-ai-recommend').textContent = state.comparing ? 'Comparing your group…' : 'Compare AI suggestions';
+    $('room-ai-recommend').setAttribute('aria-busy', String(state.comparing));
+    $('room-ai-objective').disabled = locked() || frozen();
     $('room-rescue').disabled = locked() || frozen() || state.edited;
     $('room-rescue-ai').disabled = locked() || frozen() || state.edited;
     $('room-domain').disabled = locked() || frozen();
@@ -196,6 +200,7 @@
     if (recovery && booking?.recoveryRequired) recovery.open = true;
     $('chat-input-form').querySelector('button').disabled = locked() || frozen();
     $('room-preference-review').querySelector('button').disabled = locked() || frozen();
+    $('room-preference-review').querySelector('button').textContent = state.pendingAI ? 'Confirm preferences & compare AI' : 'Yes, these are my preferences';
     $('room-shared-form').querySelector('button').disabled = locked();
     $('room-profile-form').querySelector('button').disabled = locked() || frozen();
     $('canvas-action-area').hidden = !booking?.hasBooking;
@@ -228,7 +233,14 @@
     const id = state.group.id, epoch = state.epoch, sequence = ++state.sequence;
     const [group, booking, room] = await Promise.all([state.options.api(path(id)), state.options.api(path(id, '/booking')), state.options.api(path(id, '/room'))]);
     if (!current(id, epoch) || sequence !== state.sequence) return;
-    if (group.memberCount !== state.group.memberCount) { state.quote = null; state.seats = []; renderSeats(); }
+    if (group.memberCount !== state.group.memberCount) {
+      state.offer = state.quote = null; state.seats = []; state.rescues = []; state.rescueCompare = false;
+      if (state.draft) { state.draft = null; state.edited = false; state.pendingAI = false; renderPrivate(); }
+      $('room-plan-results').replaceChildren(); $('room-rescue-results').replaceChildren();
+      $('room-ai-actions').replaceChildren();
+      $('room-ai-ranking-note').textContent = 'Group size changed. Compare again to check the updated shares and constraints.';
+      renderSeats();
+    }
     state.group = group; state.booking = booking; state.room = room;
     if (frozen() && !state.offer) {
       state.offer = state.options.getOffers().find((offer) => offer.id === booking.offerID) || null;
@@ -243,13 +255,15 @@
     const epoch = ++state.epoch;
     state.group = {id}; state.sequence++; state.approval = false;
     state.error = null;
-    state.draft = null; state.edited = false; state.rescues = [];
+    state.draft = null; state.edited = false; state.rescues = []; state.rescueCompare = false; state.pendingAI = false; state.comparing = false;
     state.booking = state.room = state.preference = state.offer = state.quote = state.ticket = null;
     state.seats = []; state.chatKey = '';
     await closeButtons();
     $('canvas-wallet-pass').hidden = true; $('pass-inline-qr').replaceChildren();
     $('room-plan-results').replaceChildren(); $('room-shared-feed').replaceChildren();
     $('room-rescue-results').replaceChildren();
+    $('room-ai-ranking-note').textContent = '';
+    $('room-ai-actions').replaceChildren();
     $('room-domain').value = domain === 'excursion' ? 'excursion' : 'movie';
     $('room-consent').checked = false;
     const [group, booking, room, preference] = await Promise.all([
@@ -266,20 +280,55 @@
     history.replaceState(null, '', `/?group=${encodeURIComponent(id)}`);
     return group;
   }
-  async function findMatches() {
+  async function findMatches(semantic = false) {
     if (state.edited) throw new Error('Confirm your draft preferences before finding new matches.');
     const id = state.group.id, epoch = state.epoch;
-    const plan = await state.options.api(path(id, `/plan?domain=${encodeURIComponent($('room-domain').value)}`));
+    const plan = semantic ? await state.options.api(path(id, '/recommendations'), {domain: $('room-domain').value, objective: $('room-ai-objective').value || 'compromise'}) :
+      await state.options.api(path(id, `/plan?domain=${encodeURIComponent($('room-domain').value)}`));
     if (!current(id, epoch)) return;
     state.offer = state.quote = null; state.seats = []; renderSeats();
     const parent = $('room-plan-results'); parent.replaceChildren();
+    const ranking = plan.recommendation;
+    $('room-ai-ranking-note').textContent = ranking ? ranking.mode === 'semantic' ?
+      `Local model: ${ranking.model}. Ranked in ${Math.round(ranking.elapsedMs)} ms on this server; ${ranking.descriptiveMemberCount}/${ranking.memberCount} members supplied tastes. This is a snapshot, not measured satisfaction. Rerun after group edits.` :
+      ranking.mode === 'no_matches' ? 'No eligible plan to compare yet. Your confirmed limits are still in effect. See what blocks each plan below.' :
+      `AI ranking did not run (${readable(ranking.mode)}). ${plan.explanation}` : '';
+    const actions = $('room-ai-actions'); actions.replaceChildren();
+    if (ranking && ['needs_tastes', 'needs_clarification'].includes(ranking.mode)) {
+      actions.append(button('Add or review my likes', reviewForAI));
+      $('room-ai-ranking-note').scrollIntoView({block: 'center', behavior: 'auto'});
+    } else if (ranking?.mode === 'needs_confirmation' && !state.preference?.isConfirmed) {
+      actions.append(button('Review my preferences', reviewForAI));
+    } else if (ranking?.mode === 'needs_confirmation') {
+      actions.append(button('Refresh group progress', () => $('room-refresh').click()));
+    } else if (ranking?.mode === 'needs_members') {
+      actions.append(button('Copy invite', () => $('copy-invite-btn').click()));
+    } else if (ranking?.mode === 'no_matches') {
+      actions.append(button('Review my budget & availability', () => reviewForAI('constraints')),
+        button('Find changes I can make', () => run(() => rescue(true))));
+      const alternative = $('room-domain').value === 'excursion' ? 'movie' : 'excursion';
+      actions.append(button(alternative === 'movie' ? 'Check cinema nights instead' : 'Check outdoor escapes instead', () => {
+        if (locked() || frozen()) return;
+        $('room-domain').value = alternative;
+        $('room-domain').dispatchEvent(new Event('change', {bubbles: true}));
+        run(compareSuggestions);
+      }));
+    } else if (ranking?.mode === 'unavailable') {
+      actions.append(node('p', 'Verified matches are shown below. AI is unavailable on this server; retry after the host checks its model setup.', 'fine'));
+    }
     if (plan.needsMembers) { parent.append(node('p', 'Invite at least one friend first. Prepare your own preferences while they join.')); return; }
     if (!plan.allConfirmed) { parent.append(node('p', `Waiting for confirmed preferences from: ${(plan.unconfirmedMembers || []).join(', ')}.`)); return; }
-    parent.append(node('p', plan.matches?.length ? `${plan.matches.length} compatible experiences found.` : 'No compatible experience. Edit your own preferences or discuss another plan.'));
+    const summary = ranking?.mode === 'needs_clarification' ? 'Review the taste descriptions before AI comparison.' :
+      plan.matches?.length ? ranking?.mode === 'semantic' ? `AI compared ${plan.matches.length} verified experiences.` :
+        `${plan.matches.length} verified matches. ${ranking ? 'These have not been ranked by AI.' : ''}` :
+        'No compatible experience yet. Review the blockers below or discuss another plan.';
+    parent.append(node('p', summary));
     if (plan.explanation) parent.append(node('p', plan.explanation, 'fine'));
-    for (const conflict of plan.conflicts || []) parent.append(node('p', conflict.reason || conflict.type, 'fine'));
+    if (!plan.matches?.length && plan.blockedOptions?.length) renderBlockers(parent, plan.blockedOptions);
+    else if (!plan.matches?.length) for (const conflict of plan.conflicts || []) parent.append(node('p', conflict.reason || conflict.type, 'fine'));
     for (const offer of plan.matches || []) {
       const card = node('article', undefined, 'room-match');
+      if (offer.recommendationLabel) card.append(node('p', offer.recommendationLabel, 'eyebrow'));
       card.append(node('h3', offer.title), node('p', schedule(offer.scheduleTime)), node('p', `Exact shares: ${offer.shareValues.join(' + ')} USD`, 'fine'));
       if (state.group.role === 'organizer') card.append(button('Review seats & shares', () => {
         state.offer = offer; state.seats = [...offer.proposedResourceIDs]; state.quote = null;
@@ -288,8 +337,65 @@
       else card.append(node('p', 'Your organizer selects the experience.', 'fine'));
       parent.append(card);
     }
+    return plan;
+  }
+  function renderBlockers(parent, options) {
+    const reasons = {
+      BUDGET_EXCEEDED: 'Your confirmed budget is below this share.',
+      SCHEDULE_DATE_MISMATCH: 'This date is outside your confirmed dates.',
+      SCHEDULE_DAY_MISMATCH: 'This weekday is outside your confirmed days.',
+      SCHEDULE_TIME_EARLY: 'This starts before your confirmed time window.',
+      SCHEDULE_TIME_LATE: 'This starts after your confirmed time window.',
+      SCHEDULE_FINISH_LATE: 'This finishes after your confirmed deadline.'
+    };
+    for (const offer of options) {
+      const card = node('article', undefined, 'room-match room-blocked');
+      const when = new Date(offer.scheduleTime).toLocaleString(undefined, {timeZone: offer.timezone});
+      card.append(node('p', 'NOT ELIGIBLE YET', 'eyebrow'), node('h3', offer.title),
+        node('p', `${when} (${offer.timezone})`), node('p', `Your exact share: ${offer.ownShareValue} ${offer.currency}`));
+      const issues = node('ul');
+      if (!offer.capacityAvailable) issues.append(node('li', 'There are not enough adjacent seats or available places for your group.'));
+      for (const issue of offer.ownConflicts) issues.append(node('li', reasons[issue.type] || 'Review your confirmed constraints for this plan.'));
+      if (offer.otherConstraintsBlock) issues.append(node('li', 'Another member’s confirmed constraints also block this plan. They must review their own fields; their private limits are not shown.'));
+      else if (offer.capacityAvailable && offer.ownConflicts.length) issues.append(node('li', 'Changes to your own fields could unlock this plan. Use “Find changes I can make” to preview them.'));
+      card.append(issues); parent.append(card);
+    }
+  }
+  function reviewForAI(kind = 'tastes') {
+    if (frozen()) return;
+    state.pendingAI = true;
+    const hasFields = !!state.preference?.interpretation;
+    $('room-ai-ranking-note').textContent = hasFields && kind === 'constraints' ?
+      'Review your budget, days and times against the plans shown. Change only what you agree to, then confirm to compare again. Blank fields mean flexible.' : hasFields ?
+      'Add a short description of what you enjoy, then confirm your fields. We will run the AI comparison after your confirmation.' :
+      'Describe your budget, timing and interests in your private planning space first. Review the fields before confirming and comparing.';
+    const target = $(hasFields ? 'room-preference-review' : 'chat-input-form');
+    target.scrollIntoView({block: 'center', behavior: 'auto'});
+    if (hasFields && kind === 'constraints') $('pref-advanced').open = true;
+    $(hasFields ? kind === 'constraints' ? 'pref-budget' : 'pref-soft' : 'chat-input-text').focus();
+    renderControls();
+  }
+  async function compareSuggestions() {
+    if (state.edited || !state.preference?.isConfirmed) { reviewForAI(); return; }
+    const id = state.group.id, epoch = state.epoch;
+    state.comparing = true;
+    $('room-ai-ranking-note').textContent = 'Checking confirmed preferences and comparing eligible plans with local AI…';
+    $('room-ai-actions').replaceChildren(); renderControls();
+    try { return await findMatches(true); }
+    catch (error) {
+      if (current(id, epoch)) {
+        state.offer = state.quote = null; state.seats = [];
+        $('room-plan-results').replaceChildren(); renderSeats();
+        $('room-ai-ranking-note').textContent = `Comparison could not finish. ${error.message}`;
+        $('room-ai-actions').replaceChildren(button('Retry comparison', () => run(compareSuggestions)));
+      }
+      throw error;
+    } finally {
+      if (current(id, epoch)) { state.comparing = false; renderControls(); }
+    }
   }
   function renderRescues(summary, ai = false) {
+    const compareAfterConfirm = state.rescueCompare;
     const parent = $('room-rescue-results'); parent.replaceChildren(node('p', summary));
     $('rescue-mode').textContent = ai ? 'On-device AI ordered these verified options by your private vibe. Exact edits and eligibility were checked by server rules.' : 'Verified what-if calculations · not an AI-generated agreement. Review every proposed change.';
     for (const proposal of state.rescues.slice(0, 3)) {
@@ -301,6 +407,7 @@
       card.append(changes);
       if (proposal.changes.length) card.append(button('Preview changes in my fields', () => {
         if (locked() || frozen()) return;
+        state.pendingAI = compareAfterConfirm;
         state.draft = proposal.constraints; state.edited = true; state.quote = state.offer = null; state.seats = [];
         $('room-plan-results').replaceChildren(); renderPrivate(); renderSeats(); renderControls();
         $('room-preference-review').scrollIntoView({block: 'center', behavior: 'auto'});
@@ -310,11 +417,13 @@
       parent.append(card);
     }
   }
-  async function rescue() {
+  async function rescue(compareAfterConfirm = false) {
     const id = state.group.id, epoch = state.epoch;
     const result = await state.options.api(path(id, '/rescue'), {domain: $('room-domain').value});
     if (!current(id, epoch)) return;
-    state.rescues = result.proposals || []; renderRescues(result.summary);
+    state.rescues = result.proposals || []; state.rescueCompare = compareAfterConfirm;
+    renderRescues(result.summary);
+    $('room-rescue-results').scrollIntoView({block: 'center', behavior: 'auto'});
     status(result.summary);
   }
   function sdk() {
@@ -392,6 +501,8 @@
       const preference = await options.api(path(id, '/preferences'), {rawText, userTz: Intl.DateTimeFormat().resolvedOptions().timeZone});
       if (!current(id, epoch)) return;
       state.preference = preference; state.offer = state.quote = null; state.seats = [];
+      $('room-ai-ranking-note').textContent = '';
+      $('room-ai-actions').replaceChildren();
       state.draft = null; state.edited = false; state.rescues = []; $('room-rescue-results').replaceChildren();
       $('room-plan-results').replaceChildren(); renderPrivate(); renderSeats();
       await refresh(); if (current(id, epoch)) status('Review and edit the extracted fields, then confirm your preferences.');
@@ -407,8 +518,10 @@
       state.draft = null; state.edited = false; state.rescues = []; $('room-rescue-results').replaceChildren();
       state.preference = preference; renderPrivate(); await refresh();
       if (!current(id, epoch)) return;
-      await findMatches();
-      if (current(id, epoch)) status('Your preferences are confirmed. Group matches respect every confirmed member.');
+      const compareAfterConfirm = state.pendingAI;
+      state.pendingAI = false;
+      if (compareAfterConfirm) await compareSuggestions(); else await findMatches();
+      if (current(id, epoch)) status(compareAfterConfirm ? 'Your preferences are confirmed. Review the AI comparison status and results.' : 'Your preferences are confirmed. Group matches respect every confirmed member.');
     });
     form('room-shared-form', async () => {
       const id = state.group.id, epoch = state.epoch, text = $('room-shared-text').value.trim();
@@ -422,6 +535,16 @@
       if (current(id, epoch)) { await refresh(); if (current(id, epoch)) status('Your group profile and privacy choice are saved.'); }
     });
     $('room-find-matches').addEventListener('click', () => run(findMatches));
+    $('room-ai-recommend').addEventListener('click', () => {
+      if (locked()) return;
+      if (state.edited || !state.preference?.isConfirmed) reviewForAI(); else run(compareSuggestions);
+    });
+    $('room-ai-objective').addEventListener('change', () => {
+      state.offer = state.quote = null; state.seats = [];
+      $('room-plan-results').replaceChildren(); $('room-ai-ranking-note').textContent = '';
+      $('room-ai-actions').replaceChildren();
+      renderSeats(); renderControls();
+    });
     $('room-rescue').addEventListener('click', () => run(rescue));
     $('room-rescue-ai').addEventListener('click', () => run(async () => {
       if (!root.GroupPayDiscover.aiReady()) { state.options.openDiscover(); $('scout-enable').focus(); return; }
@@ -436,6 +559,8 @@
     }));
     $('room-preference-review').addEventListener('input', () => {
       state.edited = true; state.quote = state.offer = null; state.seats = [];
+      $('room-ai-ranking-note').textContent = '';
+      $('room-ai-actions').replaceChildren();
       state.rescues = []; $('room-rescue-results').replaceChildren();
       $('pref-review-status').textContent = 'DRAFT CHANGE · CONFIRM TO SAVE';
       $('room-plan-results').replaceChildren(); renderSeats(); renderControls();
@@ -448,6 +573,8 @@
     });
     $('room-domain').addEventListener('change', () => {
       state.offer = state.quote = null; state.seats = []; state.rescues = [];
+      $('room-ai-ranking-note').textContent = '';
+      $('room-ai-actions').replaceChildren();
       $('room-plan-results').replaceChildren(); $('room-rescue-results').replaceChildren();
       renderSeats(); renderControls();
     });

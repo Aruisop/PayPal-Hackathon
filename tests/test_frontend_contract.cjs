@@ -57,7 +57,7 @@ const group = {id: 'g1', name: 'Friends', role: 'organizer', memberCount: 2, inv
 const room = {memberCount: 2, confirmedCount: 0, messages: [{id: 'm1', participantID: 'friend', alias: 'Member 2', text: '<img src=x onerror=alert(1)>', isSelf: false}], nextAction: 'Review preferences.'};
 const interpretation = {budget_cents: 1237, currency: 'USD', preferred_days: ['monday'], dates: [], time_window: {earliest: '19:00'}, timezone: 'UTC', soft_preferences: [], hard_constraints: [], clarifications: [], processingMode: 'manual_fallback'};
 let preference = {interpretation: null, confirmedConstraints: null, isConfirmed: false, rawText: '', guidance: {label: 'Local preference helper'}};
-let booking = {hasBooking: false}, matches = [], rejectNextQuote = false;
+let booking = {hasBooking: false}, matches = [], rejectNextQuote = false, recommendationMode = 'semantic';
 const ticket = {ticketID: 'private-ticket', ticketCode: 'TICKET-private', title: offer.title, scheduleTime: offer.scheduleTime, assignedResource: 'Seat A1', alias: 'Alice', shareValue: '16.00', currency: 'USD', captureID: 'CAPTUREOWN'};
 const document = {head, hidden: false,
   getElementById(id) { assert.ok(elements.has(id), id); return elements.get(id); },
@@ -84,6 +84,7 @@ context = vm.createContext({console: {log: console.log, warn: console.warn, erro
     else if (url.endsWith('/preferences/confirm')) { preference = {...preference, confirmedConstraints: body.confirmedConstraints, isConfirmed: true, guidance: {label: 'Local preference helper', summary: `Confirmed budget $${(body.confirmedConstraints.budget_cents / 100).toFixed(2)}`}}; room.confirmedCount = 2; result = preference; }
     else if (url.endsWith('/rescue')) result = {summary: 'An explicit change to your own budget can unlock this plan.', proposals: [{...offer, ownShareValue: '20.00', changes: [{label: 'Raise your ceiling from $18.99 to $20.00.'}], constraints: {...preference.confirmedConstraints, budget_cents: 2000}}]};
     else if (url.includes('/plan?')) result = {allConfirmed: true, matches, conflicts: matches.length ? [] : [{reason: 'No offer fits the confirmed constraints.'}], explanation: 'Actual catalog result.'};
+    else if (url.endsWith('/recommendations')) result = {allConfirmed: true, matches: matches.map((item) => ({...item, recommendationLabel: 'Balanced pick'})), conflicts: [], explanation: recommendationMode === 'semantic' ? 'Verified eligible plans, ordered by modeled compromise.' : 'Add and confirm descriptive tastes before AI comparison.', recommendation: {mode: recommendationMode, model: 'test-model', elapsedMs: 25, descriptiveMemberCount: 2, memberCount: 2}};
     else if (url.endsWith('/messages')) { room.messages.push({id: 'm2', isSelf: true, text: body.text}); result = room.messages.at(-1); }
     else if (url.endsWith('/quote')) {
       if (rejectNextQuote) { rejectNextQuote = false; return {ok: false, status: 409, json: async () => ({error: 'SEAT_UNAVAILABLE'})}; }
@@ -160,7 +161,40 @@ const text = (element) => [element.textContent, ...element.children.map(text)].j
   await event('room-shared-form', 'submit');
   assert.deepEqual(requests.find((request) => request.url.endsWith('/messages')).body, {text: 'Let us choose together'});
   matches = [offer];
+  recommendationMode = 'needs_tastes';
+  await event('room-ai-recommend');
+  assert.match(elements.get('room-ai-ranking-note').textContent, /did not run/);
+  await event(elements.get('room-ai-actions').children.find((item) => item.tagName === 'button'));
+  assert.match(elements.get('room-preference-review').querySelector('button').textContent, /Confirm.*compare/);
+  elements.get('pref-soft').value = 'science fiction';
+  await event('room-preference-review', 'input');
+  const comparisonRequests = () => requests.filter((request) => request.url.endsWith('/recommendations')).length;
+  const beforeDraft = comparisonRequests();
+  await event('room-ai-recommend');
+  assert.equal(comparisonRequests(), beforeDraft, 'Unsaved tastes require explicit confirmation, with actionable guidance');
+  recommendationMode = 'semantic';
+  await event('room-preference-review', 'submit');
+  assert.equal(comparisonRequests(), beforeDraft + 1, 'Confirmation resumes the requested AI comparison automatically');
+  assert.match(elements.get('room-ai-ranking-note').textContent, /test-model/);
+  assert.match(elements.get('room-ai-ranking-note').textContent, /not measured satisfaction/);
+  assert.equal(comparisonRequests(), 2, 'AI ranking runs on the explicit request and its confirmed continuation, never polling');
+  matches = []; recommendationMode = 'no_matches';
+  await event('room-ai-recommend');
+  assert.match(elements.get('room-ai-ranking-note').textContent, /No eligible plan/);
+  await event(elements.get('room-ai-actions').children.find((item) => item.textContent === 'Find changes I can make'));
+  // This separate browser-AI adapter is mocked; group comparison still uses its route.
+  context.GroupPayDiscover.aiReady = () => true;
+  context.GroupPayDiscover.rankVerified = async (_query, options) => options.map((option) => ({id: option.id}));
+  await event('room-rescue-ai');
+  const rerankedRescue = elements.get('room-rescue-results').children.find((item) => item.tagName === 'article');
+  await event(rerankedRescue.children.find((item) => item.tagName === 'button'));
+  assert.match(elements.get('room-preference-review').querySelector('button').textContent, /Confirm.*compare/, 'Vibe reranking preserves the requested group-AI continuation');
+  matches = [offer]; recommendationMode = 'semantic';
+  const beforeRescueConfirmation = comparisonRequests();
+  await event('room-preference-review', 'submit');
+  assert.equal(comparisonRequests(), beforeRescueConfirmation + 1);
   await event('room-find-matches');
+  assert.equal(elements.get('room-ai-ranking-note').textContent, '', 'Rules-based matching cannot retain a prior AI label');
   const card = elements.get('room-plan-results').children.find((item) => item.tagName === 'article');
   await event(card.children.find((item) => item.tagName === 'button'));
   assert.equal(elements.get('interactive-seat-map').children.length, 2);

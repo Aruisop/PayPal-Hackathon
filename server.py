@@ -13,6 +13,8 @@ from groups import GroupError, Groups
 from payments import PayPal, PayPalError
 from room import Room
 from rescue import PlanRescue
+from recommendations import Recommendations
+from semantic import LocalEncoder
 from storage import Store
 from ticketing import ticket_svg
 
@@ -35,7 +37,7 @@ def load_env():
                 key, value = line.split('=', 1)
                 os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
-def create_app(config=None, paypal=None):
+def create_app(config=None, paypal=None, encoder=None):
     app = Flask(__name__, static_folder=None)
     app.config.update(DATABASE_URL=database_url(),
         APP_ENV=os.getenv('APP_ENV', 'development'), APP_ORIGIN=os.getenv('APP_ORIGIN', 'http://localhost:8000').rstrip('/'),
@@ -64,7 +66,9 @@ def create_app(config=None, paypal=None):
     booking = CollabBooking(store, app.config['APP_ORIGIN'], adapter)
     room = Room(store)
     rescue = PlanRescue(store)
-    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter, booking=booking, room=room)
+    recommendations = Recommendations(store, encoder if encoder is not None else LocalEncoder(model='bge', query_instruction=True))
+    app.extensions.update(store=store, checkout=checkout, groups=groups, paypal=adapter, booking=booking, room=room,
+                          recommendations=recommendations)
 
     @app.before_request
     def authorize():
@@ -209,6 +213,18 @@ def create_app(config=None, paypal=None):
         if not isinstance(body, dict):
             raise AIError('INVALID_REQUEST')
         return jsonify(rescue.suggest(g.participant['id'], group_id, body.get('domain', 'movie')))
+
+    @app.get('/api/ai/status')
+    def ai_status():
+        return jsonify(recommendations.encoder.status())
+
+    @app.post('/api/groups/<group_id>/recommendations')
+    def recommend_group(group_id):
+        body = request.get_json()
+        if not isinstance(body, dict):
+            raise AIError('INVALID_REQUEST')
+        return jsonify(recommendations.recommend(g.participant['id'], group_id,
+                       body.get('domain', 'movie'), body.get('objective', 'compromise')))
 
     @app.post('/api/groups/<group_id>/messages')
     def send_room_message(group_id):

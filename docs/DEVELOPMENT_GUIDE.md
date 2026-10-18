@@ -8,6 +8,9 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 | public/room.js | Session-owned group room, private preference review, shared messages, progress, resource selection, quote, real AUTHORIZE SDK callbacks, explicit recovery and private ticket UI |
 | public/discovery.js, public/guide.js | Illustrated trusted catalog, filters, optional semantic search and four-step walkthrough |
 | public/ai.js, public/ai-worker.mjs | Lazy on-device MiniLM embeddings; bounded catalog-only rankings, no preference inference service |
+| recommendations.py | Confirmed hard eligibility, local semantic comparison, user-selected objective and post-inference stale rejection |
+| semantic.py, model_assets.py | Optional CPU-only local embeddings, catalog cache, explicit verified public-asset preparation |
+| benchmark_recommendations.py, evaluation/ | Frozen synthetic fixtures, actual inference/route timing and honest reproducible metrics |
 | rescue.py | Read-only own-preference counterfactuals rechecked by the authoritative matcher; never auto-confirms |
 | public/demo.js | Independent in-memory fictional three-person model, readiness, sequential capture, pending compensation, local tickets and duplicate admission rejection |
 | server.py | Session/Origin/CSRF/ownership HTTP boundary, explicit migration and recovery commands, static routes and interpretation-only inspector |
@@ -31,3 +34,5 @@ The real room uses one participant per browser profile. Aliases cannot switch id
 The lab receives copied catalog DTOs and has no network, cookie, session or persistent-storage capability. Its reset affects only its model. Tests of the model do not establish provider settlement. The application ticket checker verifies only the current owner's confirmed reference and does not redeem supplier admission.
 
 Read [AI and guided UX](AI_AND_GUIDED_UX.md). Run unittest, frontend, AI and demo contracts, dependency checking after dependency edits, and git diff --check. Record actual browser, real Sandbox, Gemini and PostgreSQL evidence separately. No commit/push/deploy is implied by implementation authorization.
+
+The subsequent AI candidate builds on fb07b49. Read [recommendation design](RECOMMENDATION_DESIGN.md) and [actual results](../evaluation/RESULTS.md). No model call belongs in polling, quotes, payment operations or a DB transaction. Preserve user-requested compromise default and explicit alternatives. Synthetic quality is not real-user satisfaction.
