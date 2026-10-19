@@ -58,7 +58,7 @@ def _register_dependencies(app, paypal, encoder):
         from sqlalchemy import select
         with store.engine.connect() as connection:
             if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 5:
-                raise RuntimeError('Run python server.py migrate before starting')
+                raise RuntimeError('Run python -m app migrate before starting')
     adapter = paypal or PayPal(
         os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''), os.getenv('PAYPAL_MERCHANT_ID', '')
     )

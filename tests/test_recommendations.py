@@ -12,11 +12,11 @@ from unittest.mock import patch
 
 from sqlalchemy import event, select, update
 
-from ai_planner import AIError
-from recommendations import Recommendations, regret_order
-from semantic import SemanticUnavailable
-from server import create_app
-from storage import (catalog_offers, catalog_resources, group_member_preferences,
+from app.planning.interpreter import AIError
+from app.recommendations.service import Recommendations, regret_order
+from app.recommendations.semantic import SemanticUnavailable
+from app import create_app
+from app.shared.storage import (catalog_offers, catalog_resources, group_member_preferences,
                      group_memberships, metadata)
 from test_workshop_slice import FakePayPal
 
@@ -408,7 +408,7 @@ class RecommendationTests(unittest.TestCase):
     def test_time_advancing_past_schedule_invalidates_result_without_data_change(self):
         from datetime import datetime, timezone
         before = self.snapshot()
-        clock = patch('planning.datetime', wraps=datetime)
+        clock = patch('app.planning.service.datetime', wraps=datetime)
         def advance_time():
             mocked = clock.start()
             self.addCleanup(clock.stop)

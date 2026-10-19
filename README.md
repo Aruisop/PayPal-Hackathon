@@ -10,8 +10,8 @@ The existing virtual environment is in the parent folder. From `ppl-hxn`:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
-..\.venv\Scripts\python.exe -B server.py migrate
-..\.venv\Scripts\python.exe -B server.py serve
+..\.venv\Scripts\python.exe -B -m app migrate
+..\.venv\Scripts\python.exe -B -m app serve
 ```
 
 Open **http://localhost:8000** and use **Ctrl+F5** after an update. Preserve the existing `.env`. For a fresh clone, create a virtual environment, copy `.env.example` only when `.env` does not exist, and install the pinned requirements.
@@ -27,7 +27,7 @@ No Gemini key or hosted inference service is needed. The app uses a small CPU em
 ```powershell
 ..\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt
 ..\.venv\Scripts\python.exe -B model_assets.py prepare --model bge
-..\.venv\Scripts\python.exe -B server.py serve
+..\.venv\Scripts\python.exe -B -m app serve
 ```
 
 On this workspace the optional packages and checked model assets are already prepared; restart the server after upgrading code or repairing assets. Do not change your existing `.env` or reset a database. A missing model leaves verified rules-based matching available.
@@ -79,7 +79,7 @@ The previous revision 5 application database remains separate. Do not mix or dow
 An authorized operator can run a bounded recovery pass:
 
 ```powershell
-..\.venv\Scripts\python.exe -B server.py recover
+..\.venv\Scripts\python.exe -B -m app recover
 ```
 
 This can query and mutate saved Sandbox recovery operations. GET polling performs no provider mutation. Repeated automatic progress needs an explicitly arranged operator schedule; there is no hidden worker.

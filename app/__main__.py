@@ -1,13 +1,10 @@
-"""Compatibility entry point and explicit migration/recovery commands."""
+"""Application command line: serve, migrate, or recover."""
 import argparse
 import os
 
-from app import create_app
-from app.config import database_url, load_env
-from app.shared.storage import Store
-from ticketing import ticket_svg
-
-__all__ = ['create_app']
+from . import create_app
+from .config import database_url, load_env
+from .shared.storage import Store
 
 
 def main():

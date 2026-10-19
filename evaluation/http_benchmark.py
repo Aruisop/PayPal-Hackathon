@@ -11,10 +11,10 @@ from unittest.mock import patch
 
 from sqlalchemy import insert, select
 
-from ai_planner import validate_constraints
+from app.planning.interpreter import validate_constraints
 from evaluation.metrics import quantile
-from server import create_app
-from storage import group_member_preferences, identifier, metadata
+from app import create_app
+from app.shared.storage import group_member_preferences, identifier, metadata
 
 
 class NoPayments:

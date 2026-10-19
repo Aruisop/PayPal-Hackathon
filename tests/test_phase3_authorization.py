@@ -4,8 +4,8 @@ import time
 import unittest
 from pathlib import Path
 
-from server import create_app
-from storage import catalog_resources, purchase_contributions, shared_purchases
+from app import create_app
+from app.shared.storage import catalog_resources, purchase_contributions, shared_purchases
 from test_workshop_slice import FakePayPal
 
 

@@ -6,8 +6,8 @@ from pathlib import Path
 
 from sqlalchemy import insert, inspect, select
 
-from server import create_app
-from storage import (Store, attempts, bookings, entitlements, group_memberships,
+from app import create_app
+from app.shared.storage import (Store, attempts, bookings, entitlements, group_memberships,
                      participants, versions, workshops)
 from test_workshop_slice import FakePayPal
 

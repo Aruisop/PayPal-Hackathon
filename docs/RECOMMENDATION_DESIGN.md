@@ -53,13 +53,13 @@ Server-local inference retains the established server-trusted private-preference
 
 ## Reproduce and review
 
-From ppl-hxn, install requirements-ai.txt and prepare the BGE model, then restart server.py serve. The ordinary application remains usable with base requirements only. Prepare MiniLM as well to reproduce both models:
+From ppl-hxn, install requirements-ai.txt and prepare the BGE model, then restart with `python -m app serve`. The ordinary application remains usable with base requirements only. Prepare MiniLM as well to reproduce both models:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt
 ..\.venv\Scripts\python.exe -B model_assets.py prepare --model bge
 ..\.venv\Scripts\python.exe -B model_assets.py prepare --model minilm
-..\.venv\Scripts\python.exe -B benchmark_recommendations.py --model all --repeats 5 --http
+..\.venv\Scripts\python.exe -B evaluation/benchmark_recommendations.py --model all --repeats 5 --http
 ```
 
 The benchmark reads only synthetic fixtures and local model assets. It does not load dotenv or the active database. The HTTP section uses a temporary SQLite app, real session/CSRF routes and an adapter that forbids all financial provider access. Every temporary table is compared before/after recommendation calls.

@@ -6,9 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ai_planner import AIError, DeterministicCatalogMatcher, GroupPlanExplainer, PreferenceInterpreter
-from planning import Planning
-from server import create_app
+from app.planning.interpreter import AIError, DeterministicCatalogMatcher, GroupPlanExplainer, PreferenceInterpreter
+from app.planning.service import Planning
+from app import create_app
 from test_workshop_slice import FakePayPal
 
 
@@ -33,7 +33,7 @@ class Phase2AIPlanningTests(unittest.TestCase):
             self.post(client, '/api/groups/join', {'inviteToken': token})
         self.planning = Planning(self.app.extensions['store'])
         from sqlalchemy import select
-        from storage import group_memberships
+        from app.shared.storage import group_memberships
         with self.planning.store.engine.connect() as connection:
             self.members = connection.execute(select(group_memberships.c.participant_id).where(
                 group_memberships.c.group_id == self.group['id']).order_by(group_memberships.c.joined_at)).scalars().all()

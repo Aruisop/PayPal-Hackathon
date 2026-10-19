@@ -6,11 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ai_planner import AIError
-from planning import Planning
-from room import Room
-from server import create_app
-from storage import Store
+from app.planning.interpreter import AIError
+from app.planning.service import Planning
+from app.groups.room import Room
+from app import create_app
+from app.shared.storage import Store
 from test_workshop_slice import FakePayPal
 
 
@@ -175,7 +175,7 @@ class RoomTests(unittest.TestCase):
 
     def test_revision_four_to_five_preserves_financial_rows_exactly(self):
         from sqlalchemy import insert, inspect, select
-        from storage import (catalog_resources, group_memberships, group_operations,
+        from app.shared.storage import (catalog_resources, group_memberships, group_operations,
             group_tickets, group_workflows, metadata, purchase_contributions,
             shared_purchases, versions, workshop_groups)
         url = 'sqlite:///' + (Path(self.directory.name) / 'upgrade.db').as_posix()

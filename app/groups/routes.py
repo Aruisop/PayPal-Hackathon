@@ -210,8 +210,7 @@ def get_group_ticket(group_id):
 @blueprint.get('/api/groups/<group_id>/ticket/qr')
 def get_group_ticket_qr(group_id):
     ticket = _extension('booking').get_my_ticket(g.participant['id'], group_id)
-    # Kept late-bound for the historical server.ticket_svg test seam.
-    from server import ticket_svg
+    from app.tickets.service import ticket_svg
     response = make_response(ticket_svg(ticket['ticketCode']))
     response.mimetype = 'image/svg+xml'
     return response

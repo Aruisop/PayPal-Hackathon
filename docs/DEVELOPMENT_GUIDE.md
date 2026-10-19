@@ -9,7 +9,7 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 | public/discovery.js, public/guide.js | Illustrated trusted catalog, filters, optional semantic search and four-step walkthrough |
 | public/ai.js, public/ai-worker.mjs | Lazy on-device MiniLM embeddings; bounded catalog-only rankings, no preference inference service |
 | app/recommendations/ | Confirmed hard eligibility, local semantic comparison, recovery suggestions and optional CPU-only embeddings/assets |
-| benchmark_recommendations.py, evaluation/ | Frozen synthetic fixtures, actual inference/route timing and honest reproducible metrics |
+| evaluation/ | Frozen synthetic fixtures, benchmark runner, actual inference/route timing and honest reproducible metrics |
 | public/demo.js | Independent in-memory fictional three-person model, readiness, sequential capture, pending compensation, local tickets and duplicate admission rejection |
 | app/factory.py, app/*/routes.py | Flask factory, session/Origin/CSRF/ownership boundary, and thin feature Blueprints |
 | app/shared/storage.py | SQLAlchemy Core schema, immutable migration sequence, trusted catalog and participant identities |
