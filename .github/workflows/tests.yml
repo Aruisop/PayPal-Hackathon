@@ -1,0 +1,37 @@
+name: Workshop slices mocked tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mocked-checkout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements.txt -r requirements-ai.txt
+      - name: Check dependencies
+        run: python -m pip check
+      - name: Run mocked checkout, group and authorization tests
+        run: python -m unittest discover -s tests -v
+      - name: Check original UI and payment approval contracts
+        run: node tests/test_frontend_contract.cjs
+      - name: Check isolated Judge Hub and recovery model
+        run: node tests/test_demo_contract.cjs
+      - name: Check on-device AI boundaries and fallback
+        run: node tests/test_ai_contract.cjs

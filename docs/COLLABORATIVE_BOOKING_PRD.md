@@ -14,7 +14,7 @@ Snapshot: local branch `slice/2-group-coordination`, HEAD `29a31fc`. Slice 2 is 
 
 | Existing component | Reuse | Boundary that must change for the proposed product |
 | --- | --- | --- |
-| `server.py` | Flask, participant sessions, Origin/CSRF checks, private routes, Waitress | New plan, quote, reservation and contribution routes |
+| `app/` | Flask factory, participant sessions, Origin/CSRF checks, private routes and Waitress CLI | New plan, quote, reservation and contribution routes |
 | `storage.py` | SQLAlchemy Core; local SQLite and managed PostgreSQL plan; migrations 1 and 2 | New versioned tables; never rewrite applied payment migrations |
 | `groups.py` | Invite joins, persistent memberships, organizer-only selection | Existing selection is workshop-specific; no roster freeze, quote or consent model |
 | `checkout.py` | Ownership, durable attempts, request IDs, reconciliation and lease fencing patterns | Current flow is immediate `CAPTURE`, with no authorization/refund coordinator |

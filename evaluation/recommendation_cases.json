@@ -1,0 +1,613 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "2026-10-18-v1",
+  "provenance": {
+    "author": "Codex evaluation agent",
+    "labelSource": "Assistant-authored synthetic judgments against the five trusted seed catalog entries; no model predictions were inspected before freezing these cases.",
+    "humanReviewed": false,
+    "realUserData": false,
+    "splitPolicy": "Target intent families are split before inference: development science-fiction and cyberpunk-mystery plus restaurant OOD; evaluation acoustic-drama, river-paddling, mountain-hiking, generic cinema/outdoors and other OOD. All paraphrases of one target intent stay in one split. Catalog entries are visible to all methods. Do not tune on evaluation results. New cases require a new datasetVersion and changelog.",
+    "gradeDefinition": {
+      "3": "Direct match supported by catalog facts",
+      "2": "Reasonable partial match supported by catalog facts",
+      "1": "Weak related alternative, not the requested experience",
+      "0": "Unsupported or contradicts the request"
+    },
+    "missingRelevanceMeans": 0,
+    "limitations": "Small English-only fictional catalog; subjective single-assistant labels; no user satisfaction, retention, supplier quality, booking conversion or competitive superiority evidence. Catalog runtime and schedule are not semantic suitability labels."
+  },
+  "catalog": [
+    {
+      "id": "movie-cosmic-odyssey-fri",
+      "domain": "movie",
+      "title": "Cosmic Odyssey: Remastered",
+      "description": "Sci-fi epic restored in 4K. Starlight Cinema Screen 1.",
+      "meta": {
+        "auditorium": "Screen 1",
+        "runtime_min": 148,
+        "genre": "Sci-Fi"
+      }
+    },
+    {
+      "id": "movie-neon-shadows-sat",
+      "domain": "movie",
+      "title": "Neon Shadows: Director Cut",
+      "description": "Cyberpunk mystery thriller. Starlight Cinema Screen 2.",
+      "meta": {
+        "auditorium": "Screen 2",
+        "runtime_min": 125,
+        "genre": "Thriller"
+      }
+    },
+    {
+      "id": "movie-silent-echoes-sun",
+      "domain": "movie",
+      "title": "Silent Echoes (Matinee)",
+      "description": "Award-winning acoustic drama. Starlight Cinema Screen 1.",
+      "meta": {
+        "auditorium": "Screen 1",
+        "runtime_min": 105,
+        "genre": "Drama"
+      }
+    },
+    {
+      "id": "excursion-kayak-canyon-sat",
+      "domain": "excursion",
+      "title": "Emerald River Kayak Expedition",
+      "description": "Guided 3-hour river paddle through scenic canyon gorges.",
+      "meta": {
+        "operator": "Cascade Adventures",
+        "capacity": 4,
+        "type": "fixed_group"
+      }
+    },
+    {
+      "id": "excursion-mountain-trek-sun",
+      "domain": "excursion",
+      "title": "Alpine Ridge Sunset Trek",
+      "description": "Guided alpine trail with panoramic summit views.",
+      "meta": {
+        "operator": "Cascade Adventures",
+        "capacity": 4,
+        "type": "fixed_group"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "dev-01",
+      "split": "development",
+      "intentFamily": "science-fiction",
+      "tags": [
+        "exact-title"
+      ],
+      "query": "Cosmic Odyssey remastered",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-cosmic-odyssey-fri": 3
+      }
+    },
+    {
+      "id": "dev-02",
+      "split": "development",
+      "intentFamily": "science-fiction",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A restored science fiction spectacle on the big screen",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-cosmic-odyssey-fri": 3,
+        "movie-neon-shadows-sat": 1
+      }
+    },
+    {
+      "id": "dev-03",
+      "split": "development",
+      "intentFamily": "science-fiction",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A grand space adventure with crisp picture quality",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-cosmic-odyssey-fri": 3,
+        "movie-neon-shadows-sat": 1
+      }
+    },
+    {
+      "id": "dev-04",
+      "split": "development",
+      "intentFamily": "science-fiction",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A science fiction epic presented in 4K",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-cosmic-odyssey-fri": 3
+      }
+    },
+    {
+      "id": "dev-05",
+      "split": "development",
+      "intentFamily": "science-fiction",
+      "tags": [
+        "negation"
+      ],
+      "query": "Skip the acoustic drama, show me the remastered sci-fi epic",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-cosmic-odyssey-fri": 3
+      },
+      "excluded": [
+        "movie-silent-echoes-sun"
+      ]
+    },
+    {
+      "id": "dev-06",
+      "split": "development",
+      "intentFamily": "cyberpunk-mystery",
+      "tags": [
+        "exact-title"
+      ],
+      "query": "Neon Shadows director cut",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-neon-shadows-sat": 3
+      }
+    },
+    {
+      "id": "dev-07",
+      "split": "development",
+      "intentFamily": "cyberpunk-mystery",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A futuristic detective story with suspense at the cinema",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-neon-shadows-sat": 3,
+        "movie-cosmic-odyssey-fri": 1
+      }
+    },
+    {
+      "id": "dev-08",
+      "split": "development",
+      "intentFamily": "cyberpunk-mystery",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A cinematic cyberpunk whodunit",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-neon-shadows-sat": 3
+      }
+    },
+    {
+      "id": "dev-09",
+      "split": "development",
+      "intentFamily": "cyberpunk-mystery",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A suspenseful mystery set in a high tech dystopia",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-neon-shadows-sat": 3,
+        "movie-cosmic-odyssey-fri": 1
+      }
+    },
+    {
+      "id": "dev-10",
+      "split": "development",
+      "intentFamily": "restaurant-booking",
+      "tags": [
+        "out-of-domain"
+      ],
+      "query": "Book a sushi restaurant table",
+      "expectedAnswer": false,
+      "relevance": {}
+    },
+    {
+      "id": "eval-01",
+      "split": "evaluation",
+      "intentFamily": "acoustic-drama",
+      "tags": [
+        "exact-title"
+      ],
+      "query": "Silent Echoes matinee",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-silent-echoes-sun": 3
+      }
+    },
+    {
+      "id": "eval-02",
+      "split": "evaluation",
+      "intentFamily": "acoustic-drama",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A dramatic film with an acoustic sound and an afternoon showing",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-silent-echoes-sun": 3
+      }
+    },
+    {
+      "id": "eval-03",
+      "split": "evaluation",
+      "intentFamily": "acoustic-drama",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "An award winning acoustic drama at the cinema",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-silent-echoes-sun": 3
+      }
+    },
+    {
+      "id": "eval-04",
+      "split": "evaluation",
+      "intentFamily": "acoustic-drama",
+      "tags": [
+        "negation"
+      ],
+      "query": "Not the cyberpunk thriller: the acoustic drama matinee",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-silent-echoes-sun": 3
+      },
+      "excluded": [
+        "movie-neon-shadows-sat"
+      ]
+    },
+    {
+      "id": "eval-05",
+      "split": "evaluation",
+      "intentFamily": "acoustic-drama",
+      "tags": [
+        "negation"
+      ],
+      "query": "No science fiction epic; I want the award winning drama",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-silent-echoes-sun": 3
+      },
+      "excluded": [
+        "movie-cosmic-odyssey-fri"
+      ]
+    },
+    {
+      "id": "eval-06",
+      "split": "evaluation",
+      "intentFamily": "river-paddling",
+      "tags": [
+        "exact-title"
+      ],
+      "query": "Emerald River kayak expedition",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-kayak-canyon-sat": 3
+      }
+    },
+    {
+      "id": "eval-07",
+      "split": "evaluation",
+      "intentFamily": "river-paddling",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "Float through a canyon in a little boat with a guide",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-kayak-canyon-sat": 3,
+        "excursion-mountain-trek-sun": 1
+      }
+    },
+    {
+      "id": "eval-08",
+      "split": "evaluation",
+      "intentFamily": "river-paddling",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "Spend a few hours paddling on the water between cliffs",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-kayak-canyon-sat": 3
+      }
+    },
+    {
+      "id": "eval-09",
+      "split": "evaluation",
+      "intentFamily": "river-paddling",
+      "tags": [
+        "negation"
+      ],
+      "query": "No mountain walking; I want to paddle along a river",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-kayak-canyon-sat": 3
+      },
+      "excluded": [
+        "excursion-mountain-trek-sun"
+      ]
+    },
+    {
+      "id": "eval-10",
+      "split": "evaluation",
+      "intentFamily": "river-paddling",
+      "tags": [
+        "negation"
+      ],
+      "query": "No films this time, take us paddling outdoors",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-kayak-canyon-sat": 3
+      },
+      "excluded": [
+        "movie-cosmic-odyssey-fri",
+        "movie-neon-shadows-sat",
+        "movie-silent-echoes-sun"
+      ]
+    },
+    {
+      "id": "eval-11",
+      "split": "evaluation",
+      "intentFamily": "mountain-hiking",
+      "tags": [
+        "exact-title"
+      ],
+      "query": "Alpine Ridge sunset trek",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-mountain-trek-sun": 3
+      }
+    },
+    {
+      "id": "eval-12",
+      "split": "evaluation",
+      "intentFamily": "mountain-hiking",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "An alpine hike to a scenic viewpoint near sundown",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-mountain-trek-sun": 3,
+        "excursion-kayak-canyon-sat": 1
+      }
+    },
+    {
+      "id": "eval-13",
+      "split": "evaluation",
+      "intentFamily": "mountain-hiking",
+      "tags": [
+        "paraphrase"
+      ],
+      "query": "A trail adventure ending in panoramic mountain views",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-mountain-trek-sun": 3,
+        "excursion-kayak-canyon-sat": 1
+      }
+    },
+    {
+      "id": "eval-14",
+      "split": "evaluation",
+      "intentFamily": "mountain-hiking",
+      "tags": [
+        "negation"
+      ],
+      "query": "No river or boats; we would like a mountain trek",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-mountain-trek-sun": 3
+      },
+      "excluded": [
+        "excursion-kayak-canyon-sat"
+      ]
+    },
+    {
+      "id": "eval-15",
+      "split": "evaluation",
+      "intentFamily": "generic-cinema",
+      "tags": [
+        "broad-intent"
+      ],
+      "query": "We want to see a movie together",
+      "expectedAnswer": true,
+      "relevance": {
+        "movie-cosmic-odyssey-fri": 3,
+        "movie-neon-shadows-sat": 3,
+        "movie-silent-echoes-sun": 3
+      }
+    },
+    {
+      "id": "eval-16",
+      "split": "evaluation",
+      "intentFamily": "generic-outdoor",
+      "tags": [
+        "broad-intent"
+      ],
+      "query": "Get outside and enjoy the scenery with a guide",
+      "expectedAnswer": true,
+      "relevance": {
+        "excursion-kayak-canyon-sat": 3,
+        "excursion-mountain-trek-sun": 3
+      }
+    },
+    {
+      "id": "eval-17",
+      "split": "evaluation",
+      "intentFamily": "pottery-class",
+      "tags": [
+        "out-of-domain"
+      ],
+      "query": "A beginner pottery class where we make ceramic mugs",
+      "expectedAnswer": false,
+      "relevance": {}
+    },
+    {
+      "id": "eval-18",
+      "split": "evaluation",
+      "intentFamily": "hotel-booking",
+      "tags": [
+        "out-of-domain"
+      ],
+      "query": "Reserve a hotel room for a business trip",
+      "expectedAnswer": false,
+      "relevance": {}
+    },
+    {
+      "id": "eval-19",
+      "split": "evaluation",
+      "intentFamily": "live-sport",
+      "tags": [
+        "out-of-domain"
+      ],
+      "query": "Live football match tickets at a stadium",
+      "expectedAnswer": false,
+      "relevance": {}
+    },
+    {
+      "id": "eval-20",
+      "split": "evaluation",
+      "intentFamily": "hardware-support",
+      "tags": [
+        "out-of-domain"
+      ],
+      "query": "Help me fix a broken laptop battery",
+      "expectedAnswer": false,
+      "relevance": {}
+    }
+  ],
+  "fairnessScenarios": [
+    {
+      "id": "minority-protection",
+      "description": "A majority's favorite leaves the third member far worse off than a compromise. Values are fictional normalized utilities, not model probabilities.",
+      "utilitiesByOffer": {
+        "majority-favorite": [
+          0.95,
+          0.95,
+          0.05
+        ],
+        "compromise": [
+          0.6,
+          0.6,
+          0.55
+        ]
+      },
+      "expectedLeximinFirst": "compromise",
+      "expectedMeanFirst": "majority-favorite",
+      "expectedLexicographicRegretFirst": "compromise"
+    },
+    {
+      "id": "second-worst-member",
+      "description": "Equal minimum utility; compare second-worst before average utility.",
+      "utilitiesByOffer": {
+        "uneven": [
+          0.4,
+          0.41,
+          0.99
+        ],
+        "balanced": [
+          0.4,
+          0.6,
+          0.6
+        ]
+      },
+      "expectedLeximinFirst": "balanced",
+      "expectedMeanFirst": "uneven",
+      "expectedLexicographicRegretFirst": "uneven"
+    },
+    {
+      "id": "roster-permutation",
+      "description": "Permuting roster order must preserve a fair ranking over unchanged utility sets.",
+      "utilitiesByOffer": {
+        "x": [
+          0.3,
+          0.7,
+          0.8
+        ],
+        "y": [
+          0.4,
+          0.5,
+          0.6
+        ]
+      },
+      "permutation": [
+        2,
+        0,
+        1
+      ],
+      "expectedLeximinFirst": "y",
+      "expectedLexicographicRegretFirst": "x"
+    },
+    {
+      "id": "identical-preferences",
+      "description": "Fair and mean ranking should agree when every member has the same utilities.",
+      "utilitiesByOffer": {
+        "x": [
+          0.8,
+          0.8
+        ],
+        "y": [
+          0.6,
+          0.6
+        ]
+      },
+      "expectedLeximinFirst": "x",
+      "expectedMeanFirst": "x",
+      "expectedLexicographicRegretFirst": "x"
+    },
+    {
+      "id": "explicit-regret-compromise",
+      "description": "An equally split compromise protects the worst opportunity loss. Values are artificial test inputs.",
+      "utilitiesByOffer": {
+        "majority-favorite": [
+          1.0,
+          1.0,
+          0.1
+        ],
+        "compromise": [
+          0.65,
+          0.65,
+          0.65
+        ]
+      },
+      "expectedLexicographicRegretFirst": "compromise",
+      "expectedLeximinFirst": "compromise",
+      "expectedMeanFirst": "majority-favorite"
+    }
+  ],
+  "constraintScenarios": [
+    {
+      "id": "cent-remainder",
+      "description": "A $100 fixed-group excursion for three people splits as [3334,3333,3333] cents in frozen roster order; a 3333-cent first-member budget rejects it even if every other member can pay."
+    },
+    {
+      "id": "one-member-veto",
+      "description": "A high average budget never overrides one confirmed member's insufficient budget."
+    },
+    {
+      "id": "adjacency",
+      "description": "Three free movie seats do not satisfy a three-member group if they are nonadjacent."
+    },
+    {
+      "id": "timezone",
+      "description": "Evaluate allowed date, weekday and time in each member's confirmed timezone, including UTC-to-local date rollover."
+    },
+    {
+      "id": "no-feasible-options",
+      "description": "An empty authoritative feasible set stays empty regardless of semantic score."
+    },
+    {
+      "id": "frozen-state",
+      "description": "Ranking and evaluation must not change consent, confirmed preferences, inventory, existing purchases or payment state."
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # PayPal Sandbox checkout demo
 
+> Account reference: this guide explains Sandbox accounts. Use [README](README.md) for the current workshop setup and [branch map](docs/BRANCHES.md) for shipped scope. The older retail guide and production-oriented examples do not change this app's Sandbox-only delivery.
+
 For architecture, handoff status, development pitfalls, and the tested US buyer / IN seller account pairing, read the [coworker development guide](docs/DEVELOPMENT_GUIDE.md).
 
 This repository includes a runnable checkout for a fixed **$25.00 USD** demo product. It creates orders and captures approved payments on the server, renders PayPal buttons in the browser, and supports a forced decline at capture.
@@ -10,7 +12,7 @@ Requires **Python 3.10 or newer**. No packages need to be installed.
 
 ```powershell
 Copy-Item .env.example .env
-python server.py
+python -m app serve
 ```
 
 Open **http://localhost:8000**. Without credentials, the page offers a clearly labeled simulated checkout. Simulation makes no PayPal API calls and generates no real Sandbox transactions.
@@ -38,7 +40,7 @@ If buttons fail to load, check your Client ID, internet connection, and browser 
 
 ## Implementation and checks
 
-- `server.py`: standard-library HTTP server, OAuth token exchange, order creation, and capture.
+- `app/`: Flask application package, CLI, OAuth token exchange, order creation, and capture.
 - `public/`: responsive checkout UI and PayPal JavaScript SDK integration.
 - `tests/test_checkout.py`: mocked payment and local HTTP checks.
 

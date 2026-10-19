@@ -1,0 +1,392 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "2026-10-18-group-v1",
+  "provenance": {
+    "author": "Codex evaluation agent",
+    "humanReviewed": false,
+    "realUserData": false,
+    "labelSource": "Assistant-authored synthetic member tastes and grade judgments against the fixed seed catalog, frozen before the author observed any model predictions.",
+    "limitations": "Eight small constructed groups on a fictional catalog. They are diagnostic test cases, not independently held-out human preferences or evidence of population accuracy. Majority tags describe constructed roster composition, not a desired model result. The model can legitimately disagree with these tentative labels.",
+    "gradeDefinition": {
+      "3": "Directly supported match",
+      "2": "Supported partial match",
+      "1": "Weak related alternative",
+      "0": "Unsupported or contrary to the supplied positive taste"
+    },
+    "evaluationPolicy": "Run every case; compare proposed lexicographic modeled regret with mean cosine and leximin cosine. Report per-case selected ID, per-member labels and worst labeled regret (max over members of their best eligible grade minus selected grade). No method is assumed to win. Do not tune on this diagnostic set or relabel after seeing model results. Constraints are tested separately."
+  },
+  "groups": [
+    {
+      "id": "movie-majority-space",
+      "domain": "movie",
+      "tags": [
+        "majority-minority",
+        "three-members"
+      ],
+      "candidateIDs": [
+        "movie-cosmic-odyssey-fri",
+        "movie-neon-shadows-sat",
+        "movie-silent-echoes-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "science fiction epic"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 1,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "remastered science fiction spectacle"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 1,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-2"
+        },
+        {
+          "tastes": [
+            "acoustic drama"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 0,
+            "movie-neon-shadows-sat": 0,
+            "movie-silent-echoes-sun": 3
+          },
+          "id": "synthetic-3"
+        }
+      ]
+    },
+    {
+      "id": "movie-majority-mystery",
+      "domain": "movie",
+      "tags": [
+        "majority-minority",
+        "three-members"
+      ],
+      "candidateIDs": [
+        "movie-cosmic-odyssey-fri",
+        "movie-neon-shadows-sat",
+        "movie-silent-echoes-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "cyberpunk mystery thriller"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 1,
+            "movie-neon-shadows-sat": 3,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "futuristic detective suspense"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 1,
+            "movie-neon-shadows-sat": 3,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-2"
+        },
+        {
+          "tastes": [
+            "award winning acoustic drama"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 0,
+            "movie-neon-shadows-sat": 0,
+            "movie-silent-echoes-sun": 3
+          },
+          "id": "synthetic-3"
+        }
+      ]
+    },
+    {
+      "id": "movie-three-directions",
+      "domain": "movie",
+      "tags": [
+        "divergent-tastes",
+        "three-members"
+      ],
+      "candidateIDs": [
+        "movie-cosmic-odyssey-fri",
+        "movie-neon-shadows-sat",
+        "movie-silent-echoes-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "science fiction epic"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 1,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "cyberpunk mystery thriller"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 1,
+            "movie-neon-shadows-sat": 3,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-2"
+        },
+        {
+          "tastes": [
+            "acoustic drama"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 0,
+            "movie-neon-shadows-sat": 0,
+            "movie-silent-echoes-sun": 3
+          },
+          "id": "synthetic-3"
+        }
+      ]
+    },
+    {
+      "id": "movie-flexible-and-specific",
+      "domain": "movie",
+      "tags": [
+        "flexible-member",
+        "four-members"
+      ],
+      "candidateIDs": [
+        "movie-cosmic-odyssey-fri",
+        "movie-neon-shadows-sat",
+        "movie-silent-echoes-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "cinema movie screening"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 3,
+            "movie-silent-echoes-sun": 3
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "science fiction epic"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 1,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-2"
+        },
+        {
+          "tastes": [
+            "acoustic drama"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 0,
+            "movie-neon-shadows-sat": 0,
+            "movie-silent-echoes-sun": 3
+          },
+          "id": "synthetic-3"
+        },
+        {
+          "tastes": [
+            "a film at the cinema"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 3,
+            "movie-silent-echoes-sun": 3
+          },
+          "id": "synthetic-4"
+        }
+      ]
+    },
+    {
+      "id": "outdoor-majority-paddle",
+      "domain": "excursion",
+      "tags": [
+        "majority-minority",
+        "three-members"
+      ],
+      "candidateIDs": [
+        "excursion-kayak-canyon-sat",
+        "excursion-mountain-trek-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "guided river paddle through a canyon"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 3,
+            "excursion-mountain-trek-sun": 1
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "kayak expedition among canyon gorges"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 3,
+            "excursion-mountain-trek-sun": 1
+          },
+          "id": "synthetic-2"
+        },
+        {
+          "tastes": [
+            "alpine trail and panoramic summit views"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 1,
+            "excursion-mountain-trek-sun": 3
+          },
+          "id": "synthetic-3"
+        }
+      ]
+    },
+    {
+      "id": "outdoor-flexible-and-hiking",
+      "domain": "excursion",
+      "tags": [
+        "flexible-member",
+        "two-members"
+      ],
+      "candidateIDs": [
+        "excursion-kayak-canyon-sat",
+        "excursion-mountain-trek-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "guided outdoor scenery"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 3,
+            "excursion-mountain-trek-sun": 3
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "mountain hike to a scenic viewpoint"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 1,
+            "excursion-mountain-trek-sun": 3
+          },
+          "id": "synthetic-2"
+        }
+      ]
+    },
+    {
+      "id": "outdoor-four-members",
+      "domain": "excursion",
+      "tags": [
+        "majority-minority",
+        "four-members"
+      ],
+      "candidateIDs": [
+        "excursion-kayak-canyon-sat",
+        "excursion-mountain-trek-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "guided river paddle through a canyon"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 3,
+            "excursion-mountain-trek-sun": 1
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "scenic river kayak adventure"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 3,
+            "excursion-mountain-trek-sun": 1
+          },
+          "id": "synthetic-2"
+        },
+        {
+          "tastes": [
+            "paddle a little boat through cliffs"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 3,
+            "excursion-mountain-trek-sun": 1
+          },
+          "id": "synthetic-3"
+        },
+        {
+          "tastes": [
+            "alpine trail and panoramic summit views"
+          ],
+          "relevance": {
+            "excursion-kayak-canyon-sat": 1,
+            "excursion-mountain-trek-sun": 3
+          },
+          "id": "synthetic-4"
+        }
+      ]
+    },
+    {
+      "id": "movie-aligned-space",
+      "domain": "movie",
+      "tags": [
+        "aligned-tastes",
+        "two-members"
+      ],
+      "candidateIDs": [
+        "movie-cosmic-odyssey-fri",
+        "movie-neon-shadows-sat",
+        "movie-silent-echoes-sun"
+      ],
+      "members": [
+        {
+          "tastes": [
+            "a space epic on the big screen"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 1,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-1"
+        },
+        {
+          "tastes": [
+            "restored 4K science fiction"
+          ],
+          "relevance": {
+            "movie-cosmic-odyssey-fri": 3,
+            "movie-neon-shadows-sat": 1,
+            "movie-silent-echoes-sun": 0
+          },
+          "id": "synthetic-2"
+        }
+      ]
+    }
+  ]
+}
