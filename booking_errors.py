@@ -1,7 +1,5 @@
-"""Public collaborative-booking errors, shared without service import cycles."""
+"""Compatibility import; use :mod:`app.shared.errors` in application code."""
 
+from app.shared.errors import BookingError
 
-class BookingError(Exception):
-    def __init__(self, issue, status=409):
-        self.issue, self.status = issue, status
-        super().__init__(issue)
+__all__ = ["BookingError"]

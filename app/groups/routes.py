@@ -5,7 +5,7 @@ import os
 from flask import Blueprint, current_app, g, jsonify, make_response, request
 
 from ai_planner import AIError, PreferenceInterpreter
-from collab_booking import BookingError
+from app.shared.errors import BookingError
 blueprint = Blueprint('groups', __name__)
 
 

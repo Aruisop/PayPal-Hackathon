@@ -1,11 +1,5 @@
-"""Encode an existing private demonstration ticket; never issue or redeem one."""
-import io
+"""Compatibility import; use :mod:`app.tickets.service` in application code."""
 
-import qrcode
-from qrcode.image.svg import SvgPathFillImage
+from app.tickets.service import ticket_svg
 
-
-def ticket_svg(ticket_code):
-    output = io.BytesIO()
-    qrcode.make(ticket_code, image_factory=SvgPathFillImage, border=4).save(output)
-    return output.getvalue()
+__all__ = ["ticket_svg"]

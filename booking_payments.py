@@ -8,9 +8,9 @@ import time
 
 from sqlalchemy import insert, select, update
 
-from booking_errors import BookingError
+from app.shared.errors import BookingError
 from booking_lease import claim_booking
-from payment_evidence import (require, validate_amount, validate_authorization,
+from app.payments.evidence import (require, validate_amount, validate_authorization,
                               validate_capture, validate_order, validate_refund)
 from payments import PayPalError
 from storage import (catalog_offers, catalog_resources, group_operations,
