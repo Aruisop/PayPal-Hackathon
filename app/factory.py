@@ -7,7 +7,8 @@ from flask import Flask, g, jsonify, request
 
 from ai_planner import AIError
 from checkout import Checkout, CheckoutError
-from collab_booking import BookingError, CollabBooking
+from app.bookings.service import CollabBooking
+from app.shared.errors import BookingError
 from groups import GroupError, Groups
 from payments import PayPal, PayPalError
 from recommendations import Recommendations
