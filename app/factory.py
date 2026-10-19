@@ -11,10 +11,10 @@ from app.bookings.service import CollabBooking
 from app.shared.errors import BookingError
 from app.groups.service import GroupError, Groups
 from payments import PayPal, PayPalError
-from recommendations import Recommendations
-from rescue import PlanRescue
-from room import Room
-from semantic import LocalEncoder
+from app.groups.room import Room
+from app.recommendations.rescue import PlanRescue
+from app.recommendations.semantic import LocalEncoder
+from app.recommendations.service import Recommendations
 from storage import Store, versions
 
 from .config import database_url
