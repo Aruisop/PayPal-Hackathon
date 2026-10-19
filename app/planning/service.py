@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from sqlalchemy import insert, select, update
 
-from ai_planner import (AIError, FIELDS, DeterministicCatalogMatcher, GroupPlanExplainer,
+from .interpreter import (AIError, FIELDS, DeterministicCatalogMatcher, GroupPlanExplainer,
                         PreferenceInterpreter, validate_constraints)
-from storage import (catalog_offers, catalog_resources, group_member_preferences,
+from app.shared.storage import (catalog_offers, catalog_resources, group_member_preferences,
                      group_member_profiles, group_memberships, identifier, money,
                      shared_purchases, workshop_groups)
 
@@ -251,3 +251,4 @@ class Planning:
         base['nextAction'] = ('The organizer can select a matching option and review its exact quote.' if result['matches'] else
                               'Members can edit only their own constraints, or choose another activity. No booking has been selected.')
         return base
+

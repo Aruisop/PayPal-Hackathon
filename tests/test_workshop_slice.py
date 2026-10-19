@@ -11,9 +11,9 @@ from sqlalchemy import select, update
 from sqlalchemy import event
 from unittest.mock import patch
 
-from payments import PayPal, PayPalError
-from server import create_app
-from storage import attempts
+from app.payments.paypal import PayPal, PayPalError
+from app import create_app
+from app.shared.storage import attempts
 
 
 class FakePayPal:

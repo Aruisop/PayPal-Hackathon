@@ -78,7 +78,7 @@ Keep reminders, OCR, mailbox integrations, recommendations from an unrestricted 
 
 ## Simple implementation boundaries
 
-Extract modules incrementally from `server.py`; avoid rewriting the working integration in one step:
+Keep feature modules under `app/`; avoid rewriting the working integration in one step:
 
 ```text
 app/

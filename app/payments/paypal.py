@@ -152,3 +152,4 @@ class PayPal:
 
     def get_refund(self, refund_id):
         return self._authorized('GET', f'/v2/payments/refunds/{self._identifier(refund_id)}')
+

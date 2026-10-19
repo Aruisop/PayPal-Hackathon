@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import insert, select, update
 
-from booking_errors import BookingError
-from storage import (catalog_offers, catalog_resources, group_member_profiles,
+from app.shared.errors import BookingError
+from app.shared.storage import (catalog_offers, catalog_resources, group_member_profiles,
                      group_memberships, group_workflows, group_tickets, identifier,
                      money, purchase_contributions, shared_purchases,
                      split_equal_cents, workshop_groups)
@@ -34,8 +34,8 @@ def latest_purchase(connection, group_id):
 
 class CollabBooking:
     def __init__(self, store, origin, paypal=None):
-        from booking_payments import GroupPayments
-        from planning import Planning
+        from .payments import GroupPayments
+        from app.planning.service import Planning
         self.store, self.origin, self.paypal = store, origin, paypal
         self.planning = Planning(store)
         self.payments = GroupPayments(self, paypal)
@@ -184,7 +184,7 @@ class CollabBooking:
                 providerEvidence='sandbox', inventorySource='controlled_local_catalog')
 
     def give_consent(self, participant_id, group_id):
-        from booking_lease import claim_booking
+        from .lease import claim_booking
         purchase = self.payments.purchase_for(participant_id, group_id)
         with claim_booking(self.store, purchase['id']) as lease:
             with lease.write() as connection:
@@ -247,3 +247,4 @@ class CollabBooking:
 
     def void_booking(self, *args):
         return self.payments.cancel(*args)
+

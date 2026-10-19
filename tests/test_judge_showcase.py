@@ -3,7 +3,7 @@ import unittest
 
 import test_phase4_fulfillment as fulfillment
 from sqlalchemy import select
-from storage import catalog_resources, group_tickets
+from app.shared.storage import catalog_resources, group_tickets
 
 
 class RemovedSimulationTests(unittest.TestCase):

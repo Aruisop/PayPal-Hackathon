@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 from sqlalchemy import func, select
 
-from server import create_app
-from storage import group_member_preferences, room_messages, shared_purchases
+from app import create_app
+from app.shared.storage import group_member_preferences, room_messages, shared_purchases
 from test_workshop_slice import FakePayPal
 
 

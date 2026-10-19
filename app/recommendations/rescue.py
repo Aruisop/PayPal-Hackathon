@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
-from ai_planner import AIError, DeterministicCatalogMatcher, validate_constraints
-from planning import Planning
-from storage import group_member_preferences, group_memberships, money, shared_purchases
+from app.planning.interpreter import AIError, DeterministicCatalogMatcher, validate_constraints
+from app.planning.service import Planning
+from app.shared.storage import group_member_preferences, group_memberships, money, shared_purchases
 
 
 class PlanRescue:
@@ -103,3 +103,4 @@ class PlanRescue:
                 window['finish_before'] = end.strftime('%H:%M')
                 change('time_window.finish_before', finish, window['finish_before'], f'Allow finishing at {window["finish_before"]} instead of {finish}.')
         return validate_constraints(proposed), changes
+

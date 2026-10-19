@@ -12,7 +12,7 @@ Requires **Python 3.10 or newer**. No packages need to be installed.
 
 ```powershell
 Copy-Item .env.example .env
-python server.py
+python -m app serve
 ```
 
 Open **http://localhost:8000**. Without credentials, the page offers a clearly labeled simulated checkout. Simulation makes no PayPal API calls and generates no real Sandbox transactions.
@@ -40,7 +40,7 @@ If buttons fail to load, check your Client ID, internet connection, and browser 
 
 ## Implementation and checks
 
-- `server.py`: standard-library HTTP server, OAuth token exchange, order creation, and capture.
+- `app/`: Flask application package, CLI, OAuth token exchange, order creation, and capture.
 - `public/`: responsive checkout UI and PayPal JavaScript SDK integration.
 - `tests/test_checkout.py`: mocked payment and local HTTP checks.
 

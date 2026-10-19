@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from ai_planner import AIError, PreferenceInterpreter, validate_constraints
+from app.planning.interpreter import AIError, PreferenceInterpreter, validate_constraints
 
 
 class PlanningContractTests(unittest.TestCase):

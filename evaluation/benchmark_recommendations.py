@@ -17,11 +17,11 @@ import subprocess
 import time
 
 from evaluation.metrics import quantile, ranking_metrics
-from recommendations import EXCLUSION, normalized_mean, regret_order
-from model_assets import DEFAULT_ROOT
-from semantic import LocalEncoder
+from app.recommendations.service import EXCLUSION, normalized_mean, regret_order
+from app.recommendations.assets import DEFAULT_ROOT
+from app.recommendations.semantic import LocalEncoder
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 STOP_WORDS = set('a an the i we our my would like want something for with and or to of in at is it'.split())
 
 
@@ -160,9 +160,11 @@ def main():
     group_fixture = ROOT / 'evaluation' / 'group_cases.json'
     data = json.loads(fixture.read_text(encoding='utf-8'))
     groups = json.loads(group_fixture.read_text(encoding='utf-8'))
-    source_files = ['recommendations.py', 'semantic.py', 'model_assets.py', 'benchmark_recommendations.py',
-                    'evaluation/metrics.py', 'evaluation/http_benchmark.py', 'server.py', 'planning.py',
-                    'ai_planner.py', 'storage.py', 'groups.py']
+    source_files = ['app/recommendations/service.py', 'app/recommendations/semantic.py',
+                    'app/recommendations/assets.py', 'evaluation/benchmark_recommendations.py',
+                    'evaluation/metrics.py', 'evaluation/http_benchmark.py', 'app/__main__.py',
+                    'app/planning/service.py', 'app/planning/interpreter.py',
+                    'app/shared/storage.py', 'app/groups/service.py']
     report = dict(format=1, timestampUTC=datetime.now(timezone.utc).isoformat(),
         provenance='Actual CPU ONNX inference; synthetic assistant-authored labels, not human reviewed. No browser or real-user evidence.',
         environment=dict(python=platform.python_version(), os=platform.platform(), cpu=platform.processor(), logicalCPUs=os.cpu_count(),
@@ -212,3 +214,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

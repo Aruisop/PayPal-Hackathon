@@ -7,8 +7,8 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError
 
-from payments import PayPalError
-from storage import attempts, bookings, entitlements, identifier, money, workshops
+from app.payments.paypal import PayPalError
+from app.shared.storage import attempts, bookings, entitlements, identifier, money, workshops
 
 RETENTION_SECONDS = 6 * 3600
 LEASE_SECONDS = 120
@@ -375,3 +375,4 @@ class Checkout:
         if booking['state'] != 'CONFIRMED' or not granted:
             raise CheckoutError('PAYMENT_NOT_COMPLETED', 403)
         return workshop
+

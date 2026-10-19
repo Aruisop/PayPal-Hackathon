@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
-from storage import bookings, group_memberships, identifier, workshop_groups, workshops
+from app.shared.storage import bookings, group_memberships, identifier, workshop_groups, workshops
 
 
 class GroupError(Exception):
@@ -45,7 +45,7 @@ class Groups:
                     group_memberships.c.group_id == group_id,
                     group_memberships.c.participant_id == participant_id)).scalar()
                 if not existing:
-                    from storage import shared_purchases
+                    from app.shared.storage import shared_purchases
                     frozen = connection.execute(select(shared_purchases.c.id).where(
                         shared_purchases.c.group_id == group_id,
                         shared_purchases.c.frozen_at.is_not(None),
@@ -89,7 +89,7 @@ class Groups:
                 booking_id = connection.execute(select(bookings.c.id).where(
                     bookings.c.participant_id == participant_id,
                     bookings.c.workshop_id == group['workshop_id'])).scalar()
-            from storage import group_member_profiles
+            from app.shared.storage import group_member_profiles
             member_rows = connection.execute(select(
                 group_memberships.c.participant_id, group_member_profiles.c.alias,
                 group_member_profiles.c.consent_coarse_progress
@@ -143,3 +143,4 @@ class Groups:
                 if chosen.rowcount != 1:
                     raise GroupError('GROUP_SELECTION_LOCKED')
         return self.view(participant_id, group_id)
+

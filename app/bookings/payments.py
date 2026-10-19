@@ -8,12 +8,12 @@ import time
 
 from sqlalchemy import insert, select, update
 
-from booking_errors import BookingError
-from booking_lease import claim_booking
-from payment_evidence import (require, validate_amount, validate_authorization,
+from app.shared.errors import BookingError
+from .lease import claim_booking
+from app.payments.evidence import (require, validate_amount, validate_authorization,
                               validate_capture, validate_order, validate_refund)
-from payments import PayPalError
-from storage import (catalog_offers, catalog_resources, group_operations,
+from app.payments.paypal import PayPalError
+from app.shared.storage import (catalog_offers, catalog_resources, group_operations,
                      group_tickets, group_workflows, identifier, money,
                      purchase_contributions, shared_purchases)
 
@@ -32,7 +32,7 @@ class GroupPayments:
         self.booking, self.store, self.paypal = booking, booking.store, paypal
 
     def purchase_for(self, participant_id, group_id, organizer=False):
-        from collab_booking import latest_purchase, member_group
+        from .service import latest_purchase, member_group
         with self.store.engine.connect() as connection:
             member_group(connection, participant_id, group_id, organizer)
             purchase = latest_purchase(connection, group_id)
@@ -521,3 +521,4 @@ class GroupPayments:
             except (BookingError, PayPalError):
                 result['unresolved'] += 1
         return result
+

@@ -4,7 +4,7 @@ from unittest.mock import patch
 from xml.etree import ElementTree
 
 import test_phase4_fulfillment as fulfillment
-from ticketing import ticket_svg
+from app.tickets.service import ticket_svg
 
 
 class TicketingTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class TicketingTests(unittest.TestCase):
         gid = self.create_authorized_group()
         self.assertEqual(self.post(self.organizer, f'/api/groups/{gid}/finalize', {}).json['state'], 'CONFIRMED')
         ticket = self.organizer.get(f'/api/groups/{gid}/ticket').json
-        with patch('server.ticket_svg', return_value=b'<svg/>') as encode:
+        with patch('app.tickets.service.ticket_svg', return_value=b'<svg/>') as encode:
             response = self.organizer.get(f'/api/groups/{gid}/ticket/qr')
         encode.assert_called_once_with(ticket['ticketCode'])
         self.assertEqual(response.mimetype, 'image/svg+xml')

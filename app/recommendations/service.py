@@ -7,10 +7,10 @@ import time
 
 from sqlalchemy import select
 
-from ai_planner import AIError, DeterministicCatalogMatcher, validate_constraints
-from planning import Planning
-from semantic import SemanticUnavailable
-from storage import group_member_preferences, group_memberships, shared_purchases
+from app.planning.interpreter import AIError, DeterministicCatalogMatcher, validate_constraints
+from app.planning.service import Planning
+from .semantic import SemanticUnavailable
+from app.shared.storage import group_member_preferences, group_memberships, shared_purchases
 
 
 ALGORITHM = 'verified_semantic_regret_v1'
@@ -203,3 +203,4 @@ class Recommendations:
                   'compromise': 'Ordered by the smallest worst modeled compromise.',
                   'average': 'Ordered by highest average modeled fit.'}[objective]
         return finish('semantic', f'{len(ranked)} plans satisfy every confirmed constraint. {policy} {metadata["descriptiveMemberCount"]} of {member_count} members supplied tastes. {agreement} This is not an agreement or satisfaction score; places are not reserved.', ranked)
+

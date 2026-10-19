@@ -13,7 +13,7 @@ import math
 import threading
 import time
 
-from model_assets import PROFILES, validate_assets
+from .assets import PROFILES, validate_assets
 
 
 class SemanticUnavailable(RuntimeError):
@@ -184,3 +184,4 @@ class LocalEncoder:
                 self._catalog_cache.popitem(last=False)
             self.timings['catalogMisses'] = len(missing)
             return [list(self._catalog_cache[key]) for key in keys]
+

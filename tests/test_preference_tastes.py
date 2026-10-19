@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import patch
 
-from ai_planner import PreferenceInterpreter
+from app.planning.interpreter import PreferenceInterpreter
 
 
 class PreferenceTasteTests(unittest.TestCase):

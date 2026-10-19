@@ -25,7 +25,7 @@ If the result is **No eligible plan to compare yet**, read each blocked card bef
 5. Try a hard budget conflict: the model cannot bring an ineligible offer back. A single eligible option skips inference; missing tastes/model assets give an honest non-AI result. Negative/requirement-like tastes trigger clarification rather than pretending semantic similarity enforces them.
 6. Choose an eligible plan, review the exact quote and continue the existing individually approved Sandbox flow only when ready. Do not reset unresolved purchases.
 
-For solo real-inference evidence, run `benchmark_recommendations.py --model all --http` against temporary synthetic groups. This is not the isolated payment lab and is not a rendered-browser test. Read the failure cases in evaluation/RESULTS.md before recording. Do not present raw 16/16 retrieval as deployed workflow accuracy; the guard abstains on five answerable cases and unrelated requests remain unsupported.
+For solo real-inference evidence, run `python evaluation/benchmark_recommendations.py --model all --http` against temporary synthetic groups. This is not the isolated payment lab and is not a rendered-browser test. Read the failure cases in evaluation/RESULTS.md before recording. Do not present raw 16/16 retrieval as deployed workflow accuracy; the guard abstains on five answerable cases and unrelated requests remain unsupported.
 
 ## Saved group and Plan Rescue, two browser profiles
 

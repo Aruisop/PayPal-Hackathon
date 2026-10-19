@@ -411,3 +411,4 @@ class Store:
                                     label=res['label'], row=res['row_label'],
                                     col=res['col_number'], state=res['state']) for res in resources]))
             return results
+

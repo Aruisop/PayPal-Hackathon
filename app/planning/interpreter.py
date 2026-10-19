@@ -297,3 +297,4 @@ class GroupPlanExplainer:
         if any(c['type'] == 'BUDGET_EXCEEDED' for c in conflicts):
             return 'No plan fits yet. Some options exceed a confirmed budget; review each plan’s blockers. Members decide whether to edit their own limits.'
         return 'Schedule conflict detected or no suitable option. Members may edit their own dates or time window.'
+

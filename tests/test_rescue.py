@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 from sqlalchemy import select, update
 
-from ai_planner import AIError, DeterministicCatalogMatcher
-from rescue import PlanRescue
-from server import create_app
-from storage import catalog_offers, catalog_resources, group_member_preferences, purchase_contributions, shared_purchases
+from app.planning.interpreter import AIError, DeterministicCatalogMatcher
+from app.recommendations.rescue import PlanRescue
+from app import create_app
+from app.shared.storage import catalog_offers, catalog_resources, group_member_preferences, purchase_contributions, shared_purchases
 from test_workshop_slice import FakePayPal
 
 

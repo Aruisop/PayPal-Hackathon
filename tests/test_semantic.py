@@ -8,8 +8,8 @@ import types
 import unittest
 from unittest.mock import patch
 
-import model_assets
-from semantic import LocalEncoder, SemanticUnavailable
+from app.recommendations import assets as model_assets
+from app.recommendations.semantic import LocalEncoder, SemanticUnavailable
 
 try:
     import numpy as np
@@ -22,14 +22,14 @@ class AssetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             LocalEncoder('untrusted/model')
         with tempfile.TemporaryDirectory() as root:
-            with patch('semantic.importlib.util.find_spec', return_value=object()), patch('urllib.request.urlopen', side_effect=AssertionError('network')):
+            with patch('app.recommendations.semantic.importlib.util.find_spec', return_value=object()), patch('urllib.request.urlopen', side_effect=AssertionError('network')):
                 result = LocalEncoder(root=root).status()
         self.assertFalse(result['available'])
         self.assertFalse(result['loaded'])
         self.assertIn('assets are missing', result['reason'])
 
     def test_missing_dependencies_are_optional_and_no_runtime_load(self):
-        with patch('semantic.importlib.util.find_spec', return_value=None), patch.object(LocalEncoder, '_load', side_effect=AssertionError('load')):
+        with patch('app.recommendations.semantic.importlib.util.find_spec', return_value=None), patch.object(LocalEncoder, '_load', side_effect=AssertionError('load')):
             self.assertIn('not installed', LocalEncoder().status()['reason'])
 
     def test_preparation_pins_and_verifies_before_publication(self):
@@ -212,7 +212,7 @@ class EncoderTests(unittest.TestCase):
         ort = types.SimpleNamespace(SessionOptions=lambda: options, InferenceSession=session_factory,
                                     ExecutionMode=types.SimpleNamespace(ORT_SEQUENTIAL='sequential'))
         tokens = types.SimpleNamespace(Tokenizer=types.SimpleNamespace(from_file=lambda path: tokenizer))
-        with patch('semantic.validate_assets', return_value=Path('public-fixture')), patch.dict('sys.modules', onnxruntime=ort, tokenizers=tokens), patch('urllib.request.urlopen', side_effect=AssertionError('network')):
+        with patch('app.recommendations.semantic.validate_assets', return_value=Path('public-fixture')), patch.dict('sys.modules', onnxruntime=ort, tokenizers=tokens), patch('urllib.request.urlopen', side_effect=AssertionError('network')):
             encoder.encode(['hello'])
         self.assertEqual(['CPUExecutionProvider'], calls[0][2])
         self.assertEqual(1, options.intra_op_num_threads)

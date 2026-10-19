@@ -26,7 +26,7 @@ Official contracts checked during implementation: [order creation](https://devel
 
 ## Completion, expiry and operator action
 
-Each member approves only their own share. Verifying the last required authorization persists finalization intent. An organizer can execute the capture pass, or `python server.py recover` can resume it after browser loss. The command processes at most twenty purchases per invocation; schedule subsequent invocations deliberately. GET polling reads local state only.
+Each member approves only their own share. Verifying the last required authorization persists finalization intent. An organizer can execute the capture pass, or `python -m app recover` can resume it after browser loss. The command processes at most twenty purchases per invocation; schedule subsequent invocations deliberately. GET polling reads local state only.
 
 The purchase becomes `CONFIRMED` only when every frozen contribution has validated completed capture evidence, exact shares sum to the quote, and the application still owns every held resource. Local resource booking and private ticket insertion commit together. Fulfillment is a controlled fictional catalog, not an external supplier.
 

@@ -5,9 +5,9 @@ from pathlib import Path
 
 from sqlalchemy import insert, inspect, select
 
-from collab_booking import split_equal_cents
-from server import create_app
-from storage import (Store, attempts, bookings, catalog_offers, catalog_resources,
+from app.bookings.service import split_equal_cents
+from app import create_app
+from app.shared.storage import (Store, attempts, bookings, catalog_offers, catalog_resources,
                      entitlements, group_member_profiles, group_memberships, money,
                      participants, purchase_contributions, shared_purchases,
                      versions, workshop_groups, workshops)

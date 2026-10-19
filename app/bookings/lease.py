@@ -4,8 +4,8 @@ from contextlib import contextmanager
 
 from sqlalchemy import select, update
 
-from booking_errors import BookingError
-from storage import group_workflows, identifier
+from app.shared.errors import BookingError
+from app.shared.storage import group_workflows, identifier
 
 LEASE_SECONDS = 120
 
@@ -58,3 +58,4 @@ def claim_booking(store, purchase_id):
             connection.execute(update(group_workflows).where(
                 group_workflows.c.purchase_id == purchase_id,
                 group_workflows.c.lease_token == token).values(lease_token=None, lease_until=0))
+

@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from server import create_app
-from storage import catalog_resources, group_operations, group_tickets
+from app import create_app
+from app.shared.storage import catalog_resources, group_operations, group_tickets
 from test_workshop_slice import FakePayPal
 
 

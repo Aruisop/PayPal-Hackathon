@@ -2,8 +2,8 @@
 import time
 from sqlalchemy import and_, insert, or_, select
 
-from ai_planner import AIError
-from storage import (group_member_preferences, group_member_profiles, group_memberships,
+from app.planning.interpreter import AIError
+from app.shared.storage import (group_member_preferences, group_member_profiles, group_memberships,
                      group_workflows, identifier, room_messages, shared_purchases, workshop_groups)
 
 
@@ -88,3 +88,4 @@ class Room:
                         memberCount=len(members), confirmedCount=len(confirmed), phase=phase, roster=roster,
                         unconfirmedMembers=[aliases[pid] for pid in members if pid not in confirmed],
                         nextAction=actions.get(phase, 'Review the current booking status.'), truncated=len(rows) > 50)
+

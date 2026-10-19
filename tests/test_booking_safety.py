@@ -9,11 +9,11 @@ from unittest.mock import patch
 import test_phase4_fulfillment as fulfillment
 from sqlalchemy import event, insert, select, update
 
-from booking_errors import BookingError
-from booking_lease import claim_booking
-from payments import PayPal, PayPalError
-from server import create_app
-from storage import (Store, catalog_resources, group_operations, group_tickets,
+from app.shared.errors import BookingError
+from app.bookings.lease import claim_booking
+from app.payments.paypal import PayPal, PayPalError
+from app import create_app
+from app.shared.storage import (Store, catalog_resources, group_operations, group_tickets,
                      group_workflows, purchase_contributions, shared_purchases, versions)
 
 
@@ -273,7 +273,7 @@ class BookingSafetyTests(unittest.TestCase):
             status = 204
             def __enter__(self): return self
             def __exit__(self, *args): self.close()
-        with patch('payments.urllib.request.urlopen', return_value=Response(b'')):
+        with patch('app.payments.paypal.urllib.request.urlopen', return_value=Response(b'')):
             self.assertEqual(PayPal('test','test')._request('POST', '/test', {}), {})
 
     def test_unlinked_authorization_is_not_accepted_when_order_omits_it(self):

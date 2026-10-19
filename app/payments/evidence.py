@@ -1,12 +1,8 @@
-"""Validate authenticated PayPal observations against one frozen contribution.
-
-Provider IDs locate evidence; they are never authorization or payment proof.
-These functions perform no network or database operations.
-"""
+"""Pure validation of authenticated PayPal evidence for frozen contributions."""
 from decimal import Decimal, InvalidOperation
 
-from payments import PayPalError
-from storage import money
+from .paypal import PayPalError
+from app.shared.storage import money
 
 
 def require(condition, issue):
