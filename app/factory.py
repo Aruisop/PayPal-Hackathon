@@ -5,11 +5,11 @@ from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, request
 
-from ai_planner import AIError
+from app.planning.interpreter import AIError
 from checkout import Checkout, CheckoutError
 from app.bookings.service import CollabBooking
 from app.shared.errors import BookingError
-from groups import GroupError, Groups
+from app.groups.service import GroupError, Groups
 from payments import PayPal, PayPalError
 from recommendations import Recommendations
 from rescue import PlanRescue

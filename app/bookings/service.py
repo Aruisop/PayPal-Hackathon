@@ -35,7 +35,7 @@ def latest_purchase(connection, group_id):
 class CollabBooking:
     def __init__(self, store, origin, paypal=None):
         from .payments import GroupPayments
-        from planning import Planning
+        from app.planning.service import Planning
         self.store, self.origin, self.paypal = store, origin, paypal
         self.planning = Planning(store)
         self.payments = GroupPayments(self, paypal)
