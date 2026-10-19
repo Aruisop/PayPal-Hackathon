@@ -12,8 +12,8 @@ from app.shared.errors import BookingError
 from .lease import claim_booking
 from app.payments.evidence import (require, validate_amount, validate_authorization,
                               validate_capture, validate_order, validate_refund)
-from payments import PayPalError
-from storage import (catalog_offers, catalog_resources, group_operations,
+from app.payments.paypal import PayPalError
+from app.shared.storage import (catalog_offers, catalog_resources, group_operations,
                      group_tickets, group_workflows, identifier, money,
                      purchase_contributions, shared_purchases)
 

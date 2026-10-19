@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import insert, select, update
 
 from app.shared.errors import BookingError
-from storage import (catalog_offers, catalog_resources, group_member_profiles,
+from app.shared.storage import (catalog_offers, catalog_resources, group_member_profiles,
                      group_memberships, group_workflows, group_tickets, identifier,
                      money, purchase_contributions, shared_purchases,
                      split_equal_cents, workshop_groups)

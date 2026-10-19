@@ -7,7 +7,7 @@ from sqlalchemy import insert, select, update
 
 from .interpreter import (AIError, FIELDS, DeterministicCatalogMatcher, GroupPlanExplainer,
                         PreferenceInterpreter, validate_constraints)
-from storage import (catalog_offers, catalog_resources, group_member_preferences,
+from app.shared.storage import (catalog_offers, catalog_resources, group_member_preferences,
                      group_member_profiles, group_memberships, identifier, money,
                      shared_purchases, workshop_groups)
 

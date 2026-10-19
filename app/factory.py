@@ -6,16 +6,16 @@ from urllib.parse import urlparse
 from flask import Flask, g, jsonify, request
 
 from app.planning.interpreter import AIError
-from checkout import Checkout, CheckoutError
+from app.workshops.checkout import Checkout, CheckoutError
 from app.bookings.service import CollabBooking
 from app.shared.errors import BookingError
 from app.groups.service import GroupError, Groups
-from payments import PayPal, PayPalError
+from app.payments.paypal import PayPal, PayPalError
 from app.groups.room import Room
 from app.recommendations.rescue import PlanRescue
 from app.recommendations.semantic import LocalEncoder
 from app.recommendations.service import Recommendations
-from storage import Store, versions
+from app.shared.storage import Store, versions
 
 from .config import database_url
 

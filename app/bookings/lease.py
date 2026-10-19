@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from sqlalchemy import select, update
 
 from app.shared.errors import BookingError
-from storage import group_workflows, identifier
+from app.shared.storage import group_workflows, identifier
 
 LEASE_SECONDS = 120
 

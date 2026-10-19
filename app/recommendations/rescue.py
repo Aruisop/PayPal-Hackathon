@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.planning.interpreter import AIError, DeterministicCatalogMatcher, validate_constraints
 from app.planning.service import Planning
-from storage import group_member_preferences, group_memberships, money, shared_purchases
+from app.shared.storage import group_member_preferences, group_memberships, money, shared_purchases
 
 
 class PlanRescue:

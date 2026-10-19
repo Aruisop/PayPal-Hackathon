@@ -1,7 +1,7 @@
 """Individual workshop checkout HTTP endpoints."""
 from flask import Blueprint, current_app, g, jsonify, request
 
-from checkout import CheckoutError
+from .checkout import CheckoutError
 
 
 blueprint = Blueprint('workshops', __name__)

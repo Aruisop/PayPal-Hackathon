@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.planning.interpreter import AIError, DeterministicCatalogMatcher, validate_constraints
 from app.planning.service import Planning
 from .semantic import SemanticUnavailable
-from storage import group_member_preferences, group_memberships, shared_purchases
+from app.shared.storage import group_member_preferences, group_memberships, shared_purchases
 
 
 ALGORITHM = 'verified_semantic_regret_v1'

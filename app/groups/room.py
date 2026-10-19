@@ -3,7 +3,7 @@ import time
 from sqlalchemy import and_, insert, or_, select
 
 from app.planning.interpreter import AIError
-from storage import (group_member_preferences, group_member_profiles, group_memberships,
+from app.shared.storage import (group_member_preferences, group_member_profiles, group_memberships,
                      group_workflows, identifier, room_messages, shared_purchases, workshop_groups)
 
 

@@ -1,8 +1,8 @@
 """Pure validation of authenticated PayPal evidence for frozen contributions."""
 from decimal import Decimal, InvalidOperation
 
-from payments import PayPalError
-from storage import money
+from .paypal import PayPalError
+from app.shared.storage import money
 
 
 def require(condition, issue):

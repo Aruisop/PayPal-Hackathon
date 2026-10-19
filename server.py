@@ -4,7 +4,7 @@ import os
 
 from app import create_app
 from app.config import database_url, load_env
-from storage import Store
+from app.shared.storage import Store
 from ticketing import ticket_svg
 
 __all__ = ['create_app']
