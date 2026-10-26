@@ -50,6 +50,16 @@ def create_group():
     return jsonify(_extension('groups').create(g.participant['id'], body.get('name') if isinstance(body, dict) else None))
 
 
+@blueprint.post('/api/merchant-checkouts')
+def create_merchant_checkout():
+    body = request.get_json()
+    if not isinstance(body, dict):
+        raise BookingError('INVALID_MERCHANT_CHECKOUT', 400)
+    return jsonify(_extension('groups').create_merchant_checkout(
+        g.participant['id'], body.get('offerID'), body.get('payerCount')
+    ))
+
+
 @blueprint.post('/api/groups/join')
 def join_group():
     body = request.get_json()
@@ -132,6 +142,11 @@ def freeze_group(group_id):
     if not isinstance(body, dict) or not body.get('offerID'):
         raise BookingError('OFFER_REQUIRED', 400)
     return jsonify(_extension('booking').freeze(g.participant['id'], group_id, body.get('offerID'), body.get('resourceIDs')))
+
+
+@blueprint.post('/api/groups/<group_id>/merchant-freeze')
+def freeze_merchant_checkout(group_id):
+    return jsonify(_extension('booking').freeze_merchant_checkout(g.participant['id'], group_id))
 
 
 @blueprint.get('/api/groups/<group_id>/booking')

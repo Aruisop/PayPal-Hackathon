@@ -44,6 +44,13 @@ workshop_groups = Table('workshop_groups', metadata,
     Column('organizer_id', ForeignKey('participants.id'), nullable=False),
     Column('invite_token', String(64), unique=True, nullable=False),
     Column('workshop_id', ForeignKey('workshops.id')),
+    # Revision 6: a focused merchant checkout pins its intended roster and
+    # trusted catalog offer before an invite is shared.
+    Column('checkout_mode', String(20), nullable=False, default='planning'),
+    Column('target_member_count', Integer),
+    # Kept as an ID rather than a FK because Slice 2 databases may apply this
+    # table before the Slice 3 catalog exists.
+    Column('merchant_offer_id', String(64)),
     Column('created_at', Float, nullable=False))
 group_memberships = Table('group_memberships', metadata,
     Column('id', String(40), primary_key=True),
@@ -235,8 +242,8 @@ class Store:
     def migrate(self, target=2):
         # Target defaults to 2 to preserve Slice 2 backward compatibility contract.
         from sqlalchemy import inspect
-        if target not in (2, 3, 4, 5):
-            raise ValueError('Supported migration targets are 2, 3, 4 and 5')
+        if target not in (2, 3, 4, 5, 6):
+            raise ValueError('Supported migration targets are 2, 3, 4, 5 and 6')
         if 'schema_versions' in inspect(self.engine).get_table_names():
             with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
@@ -270,7 +277,20 @@ class Store:
                     room_messages.create(connection, checkfirst=True)
                     revision = 5
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=5))
-                if revision not in (2, 3, 4, 5):
+                if revision == 5 and target >= 6:
+                    # SQLAlchemy's create(checkfirst=True) does not add columns
+                    # to an applied table. This additive revision leaves all
+                    # historical groups and financial records untouched.
+                    columns = {column['name'] for column in inspect(connection).get_columns('workshop_groups')}
+                    if 'checkout_mode' not in columns:
+                        connection.exec_driver_sql("ALTER TABLE workshop_groups ADD COLUMN checkout_mode VARCHAR(20) NOT NULL DEFAULT 'planning'")
+                    if 'target_member_count' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN target_member_count INTEGER')
+                    if 'merchant_offer_id' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN merchant_offer_id VARCHAR(64)')
+                    revision = 6
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=6))
+                if revision not in (2, 3, 4, 5, 6):
                     raise RuntimeError('Unsupported database revision; run the documented migration')
             return
         tables = [versions, participants, workshops, bookings, attempts, entitlements,

@@ -52,12 +52,12 @@ def _validate_production_config(app):
 def _register_dependencies(app, paypal, encoder):
     store = Store(app.config['DATABASE_URL'])
     if app.config['APP_ENV'] != 'production':
-        store.migrate(target=5)
+        store.migrate(target=6)
         store.seed()
     else:
         from sqlalchemy import select
         with store.engine.connect() as connection:
-            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 5:
+            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 6:
                 raise RuntimeError('Run python -m app migrate before starting')
     adapter = paypal or PayPal(
         os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''), os.getenv('PAYPAL_MERCHANT_ID', '')

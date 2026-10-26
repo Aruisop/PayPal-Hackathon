@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const helpers = require('../public/room.js');
 const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
-const sources = Object.fromEntries(['ai', 'discovery', 'guide', 'demo', 'room', 'app'].map((name) => [name, fs.readFileSync(path.join(__dirname, `../public/${name}.js`), 'utf8')]));
+const sources = Object.fromEntries(['ai', 'discovery', 'guide', 'demo', 'room', 'merchant', 'app'].map((name) => [name, fs.readFileSync(path.join(__dirname, `../public/${name}.js`), 'utf8')]));
 assert.equal(helpers.cents('33.34'), 3334);
 assert.equal(helpers.cents(''), null);
 assert.throws(() => helpers.cents('1.001'));
@@ -47,7 +47,7 @@ class Element {
   focus() {} select() {} scrollIntoView() {} click() {}
 }
 const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => [match[1], new Element()]));
-for (const source of [sources.app, sources.room]) for (const match of source.matchAll(/\$\('([^']+)'\)/g)) assert.ok(elements.has(match[1]), `Missing HTML element: ${match[1]}`);
+for (const source of [sources.app, sources.room, sources.merchant]) for (const match of source.matchAll(/\$\('([^']+)'\)/g)) assert.ok(elements.has(match[1]), `Missing HTML element: ${match[1]}`);
 elements.get('room-domain').value = 'movie';
 elements.get('room-consent').checked = false;
 const head = new Element('head');
@@ -116,6 +116,9 @@ const text = (element) => [element.textContent, ...element.children.map(text)].j
   for (const callback of events.DOMContentLoaded) await callback();
   await settle();
   assert.deepEqual(failures, [], 'Original application bootstrap completes without swallowed errors');
+  context.GroupPayMerchant.openOffer(offer);
+  assert.equal(elements.get('merchant-view').hidden, false, 'Merchant checkout opens before the PayPal approval flow');
+  assert.match(text(elements.get('merchant-choice')), /Pay together with PayPal/, 'Merchant checkout offers the group-payment choice');
   assert.ok(text(elements.get('catalog-offers-grid')).includes(offer.title), 'Discovery displays the real catalog');
   await event('show-guide-btn');
   assert.equal(elements.get('guide-modal').hidden, false, 'Walkthrough opens');

@@ -70,9 +70,17 @@ Chaos leaves refunds and voids pending until each simulated recovery completes. 
 
 The ticket checker compares only the current owner's confirmed ticket. It does not redeem real admission, validate a supplier signature or integrate with Apple/Google Wallet. Cookie identity has no account recovery; clearing it loses access to that identity.
 
+## Merchant checkout demo: Pay together with PayPal
+
+On a fictional catalog card, **Pay together with PayPal** opens a focused merchant checkout before any PayPal approval popup. A buyer can either pay alone or create a fixed 2–4 payer checkout, share its invite, then hold the merchant order after the intended roster joins. The server owns the catalog item, total, currency, payer count, selected inventory and exact-cent equal split. Each payer independently accepts and authorizes only their own amount through the ordinary PayPal popup. The order confirmation appears only after every capture is validated as completed.
+
+This is an in-app merchant demonstration, not a public merchant SDK, hosted PayPal-window customization, webhook integration, or multi-merchant marketplace. The control is merchant UI placed before PayPal's controlled approval window. Unequal splits and AI allocation are not implemented: a future assistant may only propose an allocation that the server validates against the frozen total and each affected payer explicitly accepts.
+
+See [the group-payment platform direction](docs/GROUP_PAYMENT_PLATFORM_DIRECTION.md) for the delivered merchant-demo boundary and the requirements for a future merchant integration.
+
 ## Storage and recovery
 
-SQLite is local development storage. `.env` selects the active database; the restored original used a separate revision 3 file. Revisions 4 and 5 add durable payment operations/workflows and shared room messages without rewriting applied revisions. Existing legacy purchases, IDs and tickets are preserved but require merchant review because their original synthetic or unvalidated state cannot establish payment.
+SQLite is local development storage. `.env` selects the active database; the restored original used a separate revision 3 file. Revisions 4 and 5 add durable payment operations/workflows and shared room messages; revision 6 additively records merchant-checkout mode, its trusted offer and fixed intended payer count. Applied revisions are never rewritten. Existing legacy purchases, IDs and tickets are preserved but require merchant review because their original synthetic or unvalidated state cannot establish payment.
 
 The previous revision 5 application database remains separate. Do not mix or downgrade these databases. Hosted operation requires managed PostgreSQL, HTTPS and secure cookies; PostgreSQL runtime/concurrency is still unverified.
 

@@ -14,9 +14,9 @@ def main():
     args = parser.parse_args()
     if args.command == 'migrate':
         store = Store(database_url())
-        store.migrate(target=5)
+        store.migrate(target=6)
         store.seed()
-        print('Database revision 5 applied; catalog seeded if empty. No database URL displayed.')
+        print('Database revision 6 applied; catalog seeded if empty. No database URL displayed.')
     elif args.command == 'recover':
         application = create_app()
         result = application.extensions['booking'].payments.recover_pending()

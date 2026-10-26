@@ -6,6 +6,7 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 | --- | --- |
 | public/app.js | Navigation, create/join dialogs, sounds, architecture guide, lab entry and individual workshop CAPTURE checkout |
 | public/room.js | Session-owned group room, private preference review, shared messages, progress, resource selection, quote, real AUTHORIZE SDK callbacks, explicit recovery and private ticket UI |
+| public/merchant.js | Focused fictional merchant checkout before PayPal: direct or fixed-roster equal group payment; delegates all money state to the booking service |
 | public/discovery.js, public/guide.js | Illustrated trusted catalog, filters, optional semantic search and four-step walkthrough |
 | public/ai.js, public/ai-worker.mjs | Lazy on-device MiniLM embeddings; bounded catalog-only rankings, no preference inference service |
 | app/recommendations/ | Confirmed hard eligibility, local semantic comparison, recovery suggestions and optional CPU-only embeddings/assets |
@@ -23,7 +24,7 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 
 Keep price, currency, roster, merchant validation and inventory server-owned. Confirm every member's own preferences before matching. Only all required validated completed captures unlock private tickets. Persist request IDs and known provider IDs; reconcile unknown outcomes before retrying. Never hold a transaction over a provider call. Fence writes and keep failed refunds/voids visible. GET polling is read-only.
 
-Migrations 4 and 5 extend revision 3 without rewriting original schemas. Legacy purchase evidence is preserved and quarantined for merchant review. Never reset storage or substitute the prior application's database. Local SQLite is not hosting; managed PostgreSQL runtime/concurrency still needs verification.
+Migrations 4 and 5 extend revision 3 without rewriting original schemas. Revision 6 additively stores merchant-checkout mode, its trusted offer and fixed roster size; it does not alter historical purchases or provider evidence. Legacy purchase evidence is preserved and quarantined for merchant review. Never reset storage or substitute the prior application's database. Local SQLite is not hosting; managed PostgreSQL runtime/concurrency still needs verification.
 
 The real room uses one participant per browser profile. Aliases cannot switch identity. Shared discussion is distinct from private preferences, and explicit sharing consent governs aliases/coarse progress. Cookie identities have no account recovery.
 

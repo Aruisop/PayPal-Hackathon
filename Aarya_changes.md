@@ -2,6 +2,15 @@
 
 Date: 18 October 2026. Base: Panchadip-128's `slice/3-collaborative-booking-and-equal-payments`, commit `41ec3d7`. Status: implementation review candidate; acceptance and live-payment evidence remain pending.
 
+## Merchant checkout extension (current local change)
+
+The user authorized a merchant-facing group-payment entry before the PayPal approval window. This local review change adds a focused fictional merchant checkout with a normal one-payer PayPal route and a **Pay together with PayPal** route. The buyer chooses a fixed intended roster of 2–4 payers, shares an invite, and can hold the order only after that roster joins. The existing server-owned catalog/inventory quote, exact-cent deterministic split, individual consent, independent AUTHORIZE orders, fenced sequential capture, recovery and confirmation protocol are reused; no second payment engine or client-selected money state was introduced.
+
+- Revision 6 is additive: it records a group’s merchant-checkout mode, trusted catalog offer and target payer count. It does not rewrite revisions 1–5 or mutate historical financial records.
+- The new merchant control is rendered by the merchant application before PayPal opens. It does not claim to customize PayPal’s hosted approval popup or add a PayPal-native payment method.
+- A future AI unequal-split engine remains intentionally out of scope. It must be proposal-only, validate integer cents against the frozen server total, invalidate prior approvals after a change, and require every affected payer’s explicit acceptance.
+- Added focused mocked-provider coverage for fixed roster enforcement, server-owned equal shares, one-payer authorization/capture reuse, and revision 6. JavaScript syntax and the existing frontend contract pass locally. The available `python3` lacks SQLAlchemy, so the new Python test file was not executed in this environment; no live Sandbox payment or rendered-browser claim is made.
+
 ## AI publication checkpoint
 
 The user authorized committing and pushing the accumulated AI recommendation and usability changes to [Aruisop/PayPal-Hackathon, dev/aarya](https://github.com/Aruisop/PayPal-Hackathon/tree/dev/aarya). This checkpoint extends the published UI commit `fb07b49`; the target branch was fetched and verified at that same commit before publication. The local source branch retains its existing Slice 3 name. Only the nested application is included; the outer repository and its historical changes are excluded.

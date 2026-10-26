@@ -64,8 +64,8 @@
         const people = Number($('scout-people').value || 3), base = Math.floor(offer.priceMinor / people), remainder = offer.priceMinor % people;
         body.append(node('p', `For ${people}: ${Array.from({length: people}, (_, i) => price(base + Number(i < remainder))).join(' + ')}`, 'fine'));
       }
-      const action = node('button', 'Plan this together ↗', 'btn btn-outline'); action.type = 'button';
-      action.addEventListener('click', () => onPlan(offer.id)); body.append(action);
+      const action = node('button', 'Pay together with PayPal ↗', 'btn btn-primary'); action.type = 'button';
+      action.addEventListener('click', () => onPlan(offer)); body.append(action);
       if (query && mode === 'ai') body.append(node('p', '✦ On-device AI vibe match · not a budget or consensus score', 'ai-result-tag'));
       card.append(image, body); container.append(card);
     });

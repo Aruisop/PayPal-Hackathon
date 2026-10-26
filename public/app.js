@@ -192,12 +192,12 @@ function setupTabs() {
 
 function switchTab(tab) {
   currentTab = tab;
-  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', lab: 'Solo demo lab', workshop: 'Workshops'}[tab] || 'Discover';
+  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', merchant: 'Merchant checkout', lab: 'Solo demo lab', workshop: 'Workshops'}[tab] || 'Discover';
   SOUNDS.click();
 
-  const tabs = ['discover', 'groups', 'collab', 'lab', 'workshop'];
+  const tabs = ['discover', 'groups', 'collab', 'merchant', 'lab', 'workshop'];
   tabs.forEach((t) => {
-    const btn = $(`tab-${t}`);
+    const btn = t === 'merchant' ? null : $(`tab-${t}`);
     const view = $(`${t}-view`);
     const isActive = t === tab;
     if (btn) {
@@ -301,6 +301,7 @@ function renderMyGroups() {
 
   container.innerHTML = myGroups.map((grp) => {
     const isLead = grp.role === 'organizer';
+    const isMerchantCheckout = Boolean(grp.merchantCheckout);
     return `
       <div class="group-item-card" data-group-id="${grp.id}">
         <div class="group-item-header">
@@ -316,7 +317,7 @@ function renderMyGroups() {
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button type="button" class="btn btn-primary btn-sm btn-open-group" data-group-id="${grp.id}" style="flex:1;">
-            Open Group Room &rarr;
+            ${isMerchantCheckout ? 'Open merchant checkout' : 'Open Group Room'} &rarr;
           </button>
           <button type="button" class="btn btn-secondary btn-sm btn-copy-grp-link" ${grp.inviteURL ? '' : 'hidden'} data-url="${escapeHtml(grp.inviteURL || '')}" title="Copy Invite Link">
             Invite Link
@@ -328,7 +329,7 @@ function renderMyGroups() {
 
   container.querySelectorAll('.btn-open-group').forEach((btn) => {
     btn.addEventListener('click', () => {
-      selectGroup(btn.dataset.groupId);
+      openSavedGroup(btn.dataset.groupId);
     });
   });
 
@@ -352,6 +353,15 @@ async function selectGroup(groupId, preferredOffer = null) {
     $('active-group-dot').style.display = 'inline-block';
     switchTab('collab');
   } catch (error) { setCollabStatus(`Could not open group: ${error.message}`); }
+}
+
+async function openSavedGroup(groupId) {
+  const group = await api(`/api/groups/${encodeURIComponent(groupId)}`);
+  if (group.merchantCheckout && window.GroupPayMerchant) {
+    await window.GroupPayMerchant.openGroup(groupId);
+    return;
+  }
+  await selectGroup(groupId);
 }
 
 function renderActiveGroupRoom() {
@@ -461,7 +471,8 @@ function setupGroupModals() {
         await api(`/api/groups/${joined.id}/profile`, { alias });
       }
       await fetchMyGroups();
-      await selectGroup(joined.id);
+      if (joined.merchantCheckout && window.GroupPayMerchant) window.GroupPayMerchant.openGroup(joined.id);
+      else await selectGroup(joined.id);
       setCollabStatus(`Joined group '${joined.name}'!`);
     } catch (err) {
       alert(`Could not join group: ${err.message}`);
@@ -798,7 +809,6 @@ function setupWorkshopActions() {
 // INITIALIZATION
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
-  window.GroupPayDiscover.init({onPlan: openCreateGroupModal});
   setupTabs();
   setupCatalogFilters();
   setupRoomActions();
@@ -841,6 +851,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     config = await api('/api/config');
+    if (window.GroupPayMerchant) window.GroupPayMerchant.init({api, getConfig: () => config, show: () => switchTab('merchant'), showDiscover: () => switchTab('discover')});
+    window.GroupPayDiscover.init({onPlan: (offer) => {
+      if (!window.GroupPayMerchant) throw new Error('Merchant checkout could not load. Reload and try again.');
+      window.GroupPayMerchant.openOffer(offer);
+    }});
     window.GroupPayRoom.init({api, getConfig: () => config, getOffers: () => catalogOffers, openDiscover: () => switchTab('discover'), isVisible: () => currentTab === 'collab', onGroup(group) {
       activeGroup = group;
       const index = myGroups.findIndex((item) => item.id === group.id);
@@ -889,7 +904,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (inviteParam) {
       openJoinGroupModal(inviteParam);
     } else if (groupParam) {
-      await selectGroup(groupParam);
+      await openSavedGroup(groupParam);
     }
 
   } catch (err) {

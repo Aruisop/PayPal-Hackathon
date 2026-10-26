@@ -1617,6 +1617,18 @@ summary {
   padding:14px;
   border-radius:12px;
 }
+
+/* Focused merchant handoff: this is merchant UI before, never inside, the
+   PayPal-controlled approval window. */
+.merchant-checkout { max-width: 760px; margin: 1.5rem auto; padding: clamp(1.25rem, 4vw, 3rem); background: #f8faff; border: 1px solid #dce3f1; border-radius: 24px; }
+.merchant-summary, .merchant-payment-option, .merchant-confirmation { background: #fff; border: 1px solid #dce3f1; border-radius: 16px; padding: 1.25rem; margin: 1rem 0; }
+.merchant-summary h2, .merchant-payment-option h2 { margin: .35rem 0; color: #17233c; }
+.merchant-total { display: block; font-size: 2rem; color: #17233c; margin: .5rem 0; }
+.merchant-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.merchant-choice .merchant-payment-option { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .8rem; }
+.merchant-choice select { margin-left: .5rem; }
+.merchant-status { min-height: 2rem; margin-top: 1rem; }
+.merchant-confirmation { border-color: #6da889; background: #f2fbf5; }
 .wallet-pass-card {
   background:white;
   border:1px solid #e4e8ee;

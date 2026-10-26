@@ -14,6 +14,8 @@
     </script>
     <script src="/room.js" defer>
     </script>
+    <script src="/merchant.js" defer>
+    </script>
     <script src="/app.js" defer>
     </script>
   </head>
@@ -23,7 +25,7 @@
       <a href="/" id="brand-home-link" class="brand-logo"><span class="brand-mark">g<span>p</span></span><span>group<span class="brand-light">pay</span><small>GOOD PLANS, TOGETHER.</small></span></a>
       <p class="nav-label">YOUR SPACE</p>
       <nav class="app-tabs" aria-label="Main navigation">
-        <button id="tab-discover" type="button" class="tab-btn active" aria-current="page"><span class="nav-icon">&#9672;</span> Discover <span class="nav-arrow">&#8599;</span></button>
+        <a id="tab-discover" href="/" class="tab-btn active" aria-current="page"><span class="nav-icon">&#9672;</span> Discover <span class="nav-arrow">&#8599;</span></a>
         <button id="tab-groups" type="button" class="tab-btn"><span class="nav-icon">&#9707;</span> My groups <span id="my-groups-count" class="nav-count">0</span></button>
         <button id="tab-collab" type="button" class="tab-btn"><span class="nav-icon">&#9678;</span> Group room <i id="active-group-dot" style="display:none"></i></button>
         <button id="tab-workshop" type="button" class="tab-btn"><span class="nav-icon">&#9636;</span> Workshops</button>
@@ -158,6 +160,17 @@
         <div class="gentle-note"><span>&#9678;</span> Each browser profile is one participant. Use a separate profile or device to join as someone else.</div>
         <div id="my-groups-container" class="group-grid">
         </div>
+      </main>
+      <main id="merchant-view" class="view-panel" hidden tabindex="-1">
+        <section class="merchant-checkout" aria-labelledby="merchant-title">
+          <button id="merchant-back" class="text-button" type="button">← Continue browsing</button>
+          <p class="eyebrow">FICTIONAL MERCHANT CHECKOUT</p>
+          <h1 id="merchant-title">Checkout</h1>
+          <p id="merchant-description" class="fine">Choose how you would like to pay.</p>
+          <div id="merchant-order-summary" class="merchant-summary"></div>
+          <section id="merchant-choice" class="merchant-choice" aria-label="Payment choices"></section>
+          <section id="merchant-group-status" class="merchant-status" aria-live="polite"></section>
+        </section>
       </main>
       <main id="collab-view" class="view-panel" hidden>
         <div class="room-heading">
