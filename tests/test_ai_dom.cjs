@@ -43,7 +43,7 @@ async function profile() {
       };
     }});
   doms.push(dom);
-  await waitFor(() => dom.window.GroupPayRoom && dom.window.eval('Boolean(config?.participantID)') &&
+  await waitFor(() => dom.window.GroupPayRoom && dom.window.eval('typeof config !== "undefined" && Boolean(config?.participantID)') &&
     dom.window.document.getElementById('my-groups-container').textContent.includes('No groups yet'), 'complete application bootstrap');
   return dom.window;
 }
@@ -58,24 +58,34 @@ function action(window, label) {
   assert.ok(button, `Missing action: ${label}`); button.click();
 }
 async function confirmWithoutTastes(window) {
+  element(window, 'room-show-preferences').click();
+  assert.equal(element(window, 'room-preferences-stage').hidden, false);
   element(window, 'chat-input-text').value = 'Any day and time, budget under $100';
   submit(window, 'chat-input-form');
   await waitFor(() => !element(window, 'room-preference-review').hidden && !element(window, 'room-preference-review').querySelector('button').disabled, 'private preference review');
   assert.equal(element(window, 'pref-soft').value, '');
   submit(window, 'room-preference-review');
   await waitFor(() => element(window, 'pref-review-status').textContent.includes('CONFIRMED') && !element(window, 'room-ai-recommend').disabled, 'preference confirmation');
+  assert.equal(element(window, 'room-comparison-stage').hidden, false, 'Explicit confirmation advances to comparison');
+  assert.equal(element(window, 'room-preferences-stage').hidden, true);
 }
 
 (async () => {
   const owner = await profile(), friend = await profile();
   const group = await owner.api('/api/groups', {name: 'Synthetic DOM integration group'});
   await friend.api('/api/groups/join', {inviteToken: new URL(group.inviteURL).searchParams.get('invite')});
-  await owner.selectGroup(group.id); await friend.selectGroup(group.id);
+  const catalog = await owner.api('/api/catalog/offers');
+  const starting = catalog.offers.find((offer) => offer.domain === 'movie');
+  assert.deepEqual(starting.availability.groupSizes, [2, 3, 4]);
+  await owner.selectGroup(group.id, starting); await friend.selectGroup(group.id);
+  assert.match(element(owner, 'room-starting-point').textContent, new RegExp(starting.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.equal(element(owner, 'room-preferences-stage').hidden, false);
+  assert.equal(element(owner, 'room-show-comparison').disabled, true, 'Comparison stage waits for explicit own confirmation');
   await confirmWithoutTastes(owner); await confirmWithoutTastes(friend);
   element(owner, 'room-ai-recommend').click();
   assert.match(element(owner, 'room-ai-recommend').textContent, /Comparing your group/);
   assert.equal(element(owner, 'room-ai-recommend').getAttribute('aria-busy'), 'true');
-  await waitFor(() => element(owner, 'room-ai-actions').querySelector('button') && !element(owner, 'room-ai-recommend').disabled, 'missing-tastes action');
+  await waitFor(() => element(owner, 'room-ai-actions').querySelector('button') && element(owner, 'room-ai-recommend').disabled, 'missing-tastes action');
   assert.match(element(owner, 'room-ai-ranking-note').textContent, /did not run/);
   const confirmations = () => requests.filter((request) => request.path.endsWith('/preferences/confirm')).length;
   const before = confirmations();
@@ -92,6 +102,9 @@ async function confirmWithoutTastes(window) {
   assert.match(element(owner, 'room-ai-ranking-note').textContent, /bge-small-en-v1.5/);
   assert.match(element(owner, 'room-ai-ranking-note').textContent, /1\/2 members/);
   assert.match(element(owner, 'room-plan-results').textContent, /AI compared 3 verified experiences/);
+  assert.equal(element(owner, 'brief-choices').textContent, '3');
+  assert.equal(element(owner, 'brief-method').textContent, 'Local AI comparison');
+  assert.match(element(owner, 'room-plan-results').textContent, /YOUR STARTING POINT/);
   const peer = await friend.api(`/api/groups/${group.id}/preferences`);
   assert.deepEqual(peer.confirmedConstraints.soft_preferences, [], 'Peer preferences remain unchanged');
   element(owner, 'room-ai-objective').value = 'average';
@@ -105,10 +118,11 @@ async function confirmWithoutTastes(window) {
   await waitFor(() => element(owner, 'room-ai-ranking-note').textContent.includes('Local model:') && !element(owner, 'room-ai-recommend').disabled, 'successful retry');
   assert.equal(requests.filter((request) => request.path.endsWith('/recommendations')).at(-1).body.objective, 'average');
 
+  element(owner, 'room-show-preferences').click();
   change(owner, 'pref-budget', '20.00'); submit(owner, 'room-preference-review');
   await waitFor(() => !element(owner, 'room-ai-recommend').disabled && element(owner, 'pref-review-status').textContent.includes('CONFIRMED'), 'lower own budget confirmed');
   change(owner, 'room-domain', 'excursion', 'change'); element(owner, 'room-ai-recommend').click();
-  await waitFor(() => element(owner, 'room-plan-results').querySelectorAll('.room-blocked').length === 2 && !element(owner, 'room-ai-recommend').disabled, 'no-match diagnostic cards');
+  await waitFor(() => element(owner, 'room-plan-results').querySelectorAll('.room-blocked').length === 2 && element(owner, 'room-ai-recommend').disabled, 'no-match diagnostic cards');
   assert.match(element(owner, 'room-ai-ranking-note').textContent, /No eligible plan/);
   assert.doesNotMatch(element(owner, 'room-ai-ranking-note').textContent, /error|did not run|\(no matches\)/i);
   assert.match(element(owner, 'room-plan-results').textContent, /Your exact share: 50.00 USD/);
@@ -116,10 +130,12 @@ async function confirmWithoutTastes(window) {
   assert.match(element(owner, 'room-plan-results').textContent, /Your confirmed budget is below this share/);
   assert.equal(element(owner, 'room-plan-results').querySelectorAll('button').length, 0, 'Blocked plans cannot be selected');
   action(owner, 'Review my budget');
+  assert.equal(element(owner, 'room-preferences-stage').hidden, false);
   assert.equal(owner.document.activeElement.id, 'pref-budget');
   assert.equal(element(owner, 'pref-advanced').open, true);
+  element(owner, 'room-show-comparison').click();
   action(owner, 'Find changes I can make');
-  await waitFor(() => element(owner, 'room-rescue-results').querySelectorAll('.rescue-option').length === 2 && !element(owner, 'room-ai-recommend').disabled, 'verified own-only proposals');
+  await waitFor(() => element(owner, 'room-rescue-results').querySelectorAll('.rescue-option').length === 2, 'verified own-only proposals');
   const beforePreview = confirmations();
   element(owner, 'room-rescue-results').querySelectorAll('.rescue-option')[1].querySelector('button').click();
   assert.equal(element(owner, 'pref-budget').value, '60.00');
@@ -131,22 +147,27 @@ async function confirmWithoutTastes(window) {
   assert.match(element(owner, 'room-plan-results').textContent, /AI compared 2 verified experiences/);
   assert.deepEqual((await friend.api(`/api/groups/${group.id}/preferences`)).confirmedConstraints, peer.confirmedConstraints, 'Own tradeoff leaves all peer constraints unchanged');
 
+  element(friend, 'room-show-preferences').click();
   change(friend, 'pref-budget', '20.00'); submit(friend, 'room-preference-review');
   await waitFor(() => !element(friend, 'room-ai-recommend').disabled && element(friend, 'pref-review-status').textContent.includes('CONFIRMED'), 'peer chooses own lower budget');
+  element(owner, 'room-refresh').click();
+  await waitFor(() => element(owner, 'room-ai-ranking-note').textContent.includes('Group preferences changed') && !element(owner, 'room-ai-recommend').disabled, 'peer edit invalidates the old comparison');
+  assert.equal(element(owner, 'room-plan-results').children.length, 0);
+  assert.equal(element(owner, 'brief-choices').textContent, 'Not checked');
   element(owner, 'room-ai-recommend').click();
-  await waitFor(() => element(owner, 'room-plan-results').querySelectorAll('.room-blocked').length === 2 && !element(owner, 'room-ai-recommend').disabled, 'peer-only block visible');
+  await waitFor(() => element(owner, 'room-plan-results').querySelectorAll('.room-blocked').length === 2 && element(owner, 'room-ai-recommend').disabled, 'peer-only block visible');
   assert.doesNotMatch(element(owner, 'room-plan-results').textContent, /Your confirmed budget is below/);
   assert.match(element(owner, 'room-plan-results').textContent, /Another member/);
   action(owner, 'Find changes I can make');
-  await waitFor(() => element(owner, 'room-rescue-results').textContent.includes('Changing only your preferences cannot unlock') && !element(owner, 'room-ai-recommend').disabled, 'own edits cannot bypass peer limits');
+  await waitFor(() => element(owner, 'room-rescue-results').textContent.includes('Changing only your preferences cannot unlock'), 'own edits cannot bypass peer limits');
   assert.equal(element(owner, 'room-rescue-results').querySelectorAll('button').length, 0);
-  action(owner, 'Check cinema nights instead');
+  action(owner, 'View 3 cinema nights');
   await waitFor(() => element(owner, 'room-ai-ranking-note').textContent.includes('Local model:') && !element(owner, 'room-ai-recommend').disabled, 'explicit category switch compares eligible alternatives');
   assert.equal(element(owner, 'room-domain').value, 'movie');
   assert.match(element(owner, 'room-plan-results').textContent, /AI compared 3 verified experiences/);
 
   change(owner, 'room-domain', 'excursion', 'change'); element(owner, 'room-ai-recommend').click();
-  await waitFor(() => element(owner, 'room-plan-results').querySelectorAll('.room-blocked').length === 2 && !element(owner, 'room-ai-recommend').disabled, 'diagnostics before roster change');
+  await waitFor(() => element(owner, 'room-plan-results').querySelectorAll('.room-blocked').length === 2 && element(owner, 'room-ai-recommend').disabled, 'diagnostics before roster change');
   const third = await profile();
   await third.api('/api/groups/join', {inviteToken: new URL(group.inviteURL).searchParams.get('invite')});
   element(owner, 'room-refresh').click();
@@ -154,5 +175,5 @@ async function confirmWithoutTastes(window) {
   assert.equal(element(owner, 'room-plan-results').children.length, 0, 'Stale shares and blockers disappear after roster change');
   assert.equal(element(owner, 'room-rescue-results').children.length, 0);
   assert.deepEqual(errors, []);
-  console.log('Actual DOM + live temporary API + real BGE passed: taste onboarding, retries, exact blocked shares, private own/peer diagnostics, explicit tradeoff confirmation resuming AI, category switch and roster invalidation. No rendered-browser or payment claim.');
+  console.log('Actual DOM + live temporary API + real BGE passed: staged preferences/comparison, discovery intent, truthful decision brief, taste onboarding, retries, blocked shares, explicit tradeoffs, category switch, peer-edit and roster invalidation. No rendered-browser or payment claim.');
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => { for (const dom of doms) dom.window.close(); });

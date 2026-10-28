@@ -1,7 +1,7 @@
 """Optional local CPU embeddings; hard booking decisions belong to Planning.
 
 No network I/O occurs here. Install requirements-ai.txt and explicitly prepare
-assets with model_assets.py. Only trusted catalog descriptions are cached;
+assets with python -m app.recommendations.assets. Only trusted catalog descriptions are cached;
 participant text and vectors are never retained by this module.
 """
 

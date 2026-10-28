@@ -4,8 +4,6 @@
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#17233c"><title>GroupPay - good plans, together</title>
     <link rel="stylesheet" href="/style.css">
-    <script src="/ai.js" defer>
-    </script>
     <script src="/discovery.js" defer>
     </script>
     <script src="/guide.js" defer>
@@ -100,24 +98,21 @@
           <div><b>03</b><span><strong>Approve your own share</strong><small>Tickets after everyone completes.</small></span>
           </div>
         </section>
-        <section class="scout-card" aria-labelledby="scout-title">
-          <div class="scout-heading"><span class="ai-symbol">&#10022;</span>
+        <section class="catalog-search-card" aria-labelledby="catalog-search-title">
+          <div class="catalog-search-heading"><span class="ai-symbol" aria-hidden="true">&#8981;</span>
             <div>
-              <p class="eyebrow">YOUR PRIVATE AI SCOUT</p>
-              <h2 id="scout-title">Start with a vibe, not a spreadsheet.</h2>
-              <p>Try &ldquo;a calm escape outdoors&rdquo; or &ldquo;an immersive sci-fi night&rdquo;.</p>
+              <p class="eyebrow">FIND AN EXPERIENCE</p>
+              <h2 id="catalog-search-title">Find an experience for your group.</h2>
+              <p>Search by title, genre, or description.</p>
             </div>
-            <button id="scout-enable" class="btn btn-ink" type="button">Enable on-device AI</button>
           </div>
-          <form id="scout-form" class="scout-form">
-            <label class="sr-only" for="scout-query">Describe the experience you want</label>
-            <span class="search-glyph" aria-hidden="true">&#8981;</span><input id="scout-query" maxlength="1000" placeholder="What kind of moment are you looking for?" autocomplete="off"><button class="btn btn-primary">Find my vibe <span>&#8594;</span></button>
+          <form id="catalog-search-form" class="catalog-search-form">
+            <label class="sr-only" for="catalog-search-query">Search by title, genre or description</label>
+            <span class="search-glyph" aria-hidden="true">&#8981;</span><input id="catalog-search-query" maxlength="1000" placeholder="e.g. science fiction" autocomplete="off"><button class="btn btn-primary">Search <span>&#8594;</span></button>
           </form>
-          <div class="scout-bottom">
-            <p id="scout-status" role="status" aria-live="polite">Basic search is ready. Optional AI downloads a ~23 MB model plus runtime; your search text stays on your device.</p>
-            <button id="scout-clear" type="button" class="text-button">Clear search</button>
-          </div>
-          <div class="scout-prompts"><button type="button" data-vibe="An immersive science fiction movie with friends">Space &amp; big-screen stories</button><button type="button" data-vibe="A peaceful outdoor river adventure">Fresh air &amp; a little adventure</button><button type="button" data-vibe="A funny lighthearted movie night">Something fun and easy</button>
+          <div class="catalog-search-status">
+            <p id="catalog-search-message" role="status" aria-live="polite">Budget and group size are previews; the room checks actual group fit.</p>
+            <button id="catalog-search-clear" type="button" class="text-button">Clear search</button>
           </div>
         </section>
         <section class="catalog-section">
@@ -133,9 +128,9 @@
             <p id="discover-tz-notice" class="fine">
             </p>
             <div class="compact-fields">
-              <label for="scout-people">People<select id="scout-people"><option>2</option><option selected>3</option><option>4</option></select>
+              <label for="catalog-people">People<select id="catalog-people"><option>2</option><option selected>3</option><option>4</option></select>
               </label>
-              <label for="scout-budget">Max per person (USD)<input id="scout-budget" type="number" min="0" step="0.01" placeholder="Flexible">
+              <label for="catalog-budget">Max per person (USD)<input id="catalog-budget" type="number" min="0" step="0.01" placeholder="Flexible">
               </label>
             </div>
           </div>
@@ -185,6 +180,7 @@
         <section class="room-next-card"><span class="next-icon">&#8599;</span>
           <div>
             <p class="eyebrow">HERE'S YOUR NEXT MOVE</p>
+            <h2 id="room-journey-title">One plan. Everyone gets a say.</h2>
             <p id="room-next-action">Create or join a group to get started.</p>
             <p id="room-readiness" class="fine">
             </p>
@@ -204,17 +200,28 @@
             <button class="btn btn-outline">Save profile</button>
           </form>
         </details>
+        <section class="decision-brief" aria-label="Your common ground at a glance">
+          <div class="brief-intro"><p class="eyebrow">YOUR COMMON GROUND</p><p id="room-starting-point">A shared decision, with each person's limits respected.</p></div>
+          <div><span>Preferences confirmed</span><strong id="brief-confirmed">0 / 0</strong></div>
+          <div><span>Last checked matches</span><strong id="brief-choices">Not checked</strong></div>
+          <div><span>How we compared</span><strong id="brief-method">Not compared yet</strong></div>
+        </section>
         <div class="room-workspace">
           <div class="planning-column">
             <section class="room-panel room-chat-panel">
               <div class="panel-header"><span class="ai-symbol">&#10022;</span>
                 <div>
                   <p class="eyebrow">ONLY YOU CAN SEE THIS</p>
-                  <h2>Your planning space</h2>
+                  <h2>Make room for everyone.</h2>
                 </div>
                 <button id="open-ai-guardrails-btn" class="text-button" type="button">How it decides</button>
               </div>
               <div id="room-planning-controls">
+                <div class="planner-tabs" role="group" aria-label="Planning stages">
+                  <button id="room-show-preferences" type="button" aria-pressed="true" aria-controls="room-preferences-stage">1. My preferences</button>
+                  <button id="room-show-comparison" type="button" aria-pressed="false" aria-controls="room-comparison-stage">2. Compare our plans</button>
+                </div>
+                <div id="room-preferences-stage">
                 <p id="room-planning-mode" class="mode-note">
                 </p>
                 <div id="chat-messages-container" class="chat-stream" aria-live="polite">
@@ -258,23 +265,27 @@
                   <p class="fine">Nothing changes until you confirm. Blank fields mean flexible.</p>
                   <button class="btn btn-primary btn-block">Yes, these are my preferences &#10003;</button>
                 </form>
+                </div>
+                <div id="room-comparison-stage" hidden>
+                <div class="comparison-intro"><p class="eyebrow">FIRST THE FIT. THEN THE FEEL.</p><h3>Turn everyone's preferences into a plan.</h3><p id="room-comparison-readiness">Everyone confirms privately before we compare. You can return to your own preferences at any time.</p></div>
                 <div class="room-match-toolbar">
                   <label for="room-domain">Let's explore<select id="room-domain"><option value="movie">Cinema nights</option><option value="excursion">Outdoor escapes</option></select>
                   </label>
-                  <button id="room-find-matches" class="btn btn-ink" type="button">Find our common ground &#8594;</button>
                 </div>
+                <p id="room-catalog-status" class="fine" role="status" aria-live="polite"></p>
                 <section class="room-ai-panel" aria-labelledby="room-ai-title">
                   <p class="eyebrow">A PLAN WITH EVERYONE IN MIND</p>
-                  <h3 id="room-ai-title">Make the compromise visible.</h3>
-                  <p>First we verify every confirmed budget, time and place constraint. A local AI model then compares two ways to rank the eligible plans. Neither is a measure of happiness. Private likes stay on this server; no peer text or scores are shown.</p>
-                  <label for="room-ai-objective">How should we compare?<select id="room-ai-objective"><option value="compromise">Smallest worst modeled compromise</option><option value="average">Highest average modeled fit</option><option value="compare">Show both views, in schedule order</option></select></label>
+                  <h3 id="room-ai-title">A little help finding common ground.</h3>
+                  <p>We check everyone's confirmed limits first. Local AI then compares the experiences that fit, using the meaning of your confirmed likes.</p>
+                  <label for="room-ai-objective">What should lead the comparison?<select id="room-ai-objective"><option value="compromise">A balanced compromise</option><option value="average">Best average modeled fit</option><option value="compare">Compare both approaches</option></select></label>
+                  <details class="comparison-explanation"><summary>What does the AI actually do?</summary><p>The balanced option minimizes the largest modeled loss relative to each person's best eligible choice. Average fit uses mean semantic similarity. These scores do not measure happiness or agreement. Private likes stay on this server; peer text and individual scores are not shared. People choose, reserve and approve for themselves.</p></details>
                   <button id="room-ai-recommend" class="btn btn-primary" type="button">Compare AI suggestions</button>
                   <p id="room-ai-ranking-note" class="fine" role="status" aria-live="polite"></p>
                   <div id="room-ai-actions" class="button-row"></div>
                 </section>
                 <div id="room-plan-results" class="room-matches" aria-live="polite">
                 </div>
-                <section class="rescue-card">
+                <section id="room-rescue-card" class="rescue-card">
                   <div class="rescue-heading"><span>&#10023;</span>
                     <div>
                       <p class="eyebrow">PLAN RESCUE</p>
@@ -282,12 +293,13 @@
                     </div>
                   </div>
                   <p>See what small edits to your own budget or timing could unlock. Everyone else's confirmed preferences stay intact.</p>
-                  <div class="button-row"><button id="room-rescue" class="btn btn-outline" type="button">Explore my tradeoffs &#8594;</button><button id="room-rescue-ai" class="text-button" type="button">Rank options with my AI vibe</button>
+                  <div class="button-row"><button id="room-rescue" class="btn btn-outline" type="button">Explore my tradeoffs &#8594;</button>
                   </div>
-                  <p id="rescue-mode" class="fine">Verified what-if calculations. Optional AI ranks the vibe; it cannot change anyone's limits.</p>
+                  <p id="rescue-mode" class="fine">Verified what-if calculations. Review each proposed change before confirming it.</p>
                   <div id="room-rescue-results" aria-live="polite">
                   </div>
                 </section>
+                </div>
               </div>
             </section>
             <section class="room-panel room-shared-chat">

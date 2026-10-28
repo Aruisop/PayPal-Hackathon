@@ -18,6 +18,11 @@ except ImportError:
 
 
 class AssetTests(unittest.TestCase):
+    def test_default_assets_stay_in_the_application_instance_directory_after_package_relocation(self):
+        from app.config import ROOT
+        self.assertEqual(model_assets.DEFAULT_ROOT, ROOT / 'instance' / 'ai-models')
+        self.assertNotIn('recommendations/instance', model_assets.DEFAULT_ROOT.as_posix())
+
     def test_invalid_profile_and_missing_local_assets(self):
         with self.assertRaises(ValueError):
             LocalEncoder('untrusted/model')

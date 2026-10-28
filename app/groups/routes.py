@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, g, jsonify, make_response, request
 
 from app.planning.interpreter import AIError, PreferenceInterpreter
 from app.shared.errors import BookingError
+from app.planning.catalog import availability
 blueprint = Blueprint('groups', __name__)
 
 
@@ -105,7 +106,10 @@ def select_group_workshop(group_id):
 
 @blueprint.get('/api/catalog/offers')
 def get_offers():
-    return jsonify(offers=_extension('store').offers(request.args.get('domain')))
+    domain = request.args.get('domain')
+    if domain is not None and domain not in ('movie', 'excursion'):
+        raise AIError('INVALID_DOMAIN')
+    return jsonify(availability(_extension('store').offers(domain)))
 
 
 @blueprint.post('/api/groups/<group_id>/profile')

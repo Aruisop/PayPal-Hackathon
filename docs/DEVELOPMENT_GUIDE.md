@@ -6,8 +6,7 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 | --- | --- |
 | public/app.js | Navigation, create/join dialogs, sounds, architecture guide, lab entry and individual workshop CAPTURE checkout |
 | public/room.js | Session-owned group room, private preference review, shared messages, progress, resource selection, quote, real AUTHORIZE SDK callbacks, explicit recovery and private ticket UI |
-| public/discovery.js, public/guide.js | Illustrated trusted catalog, filters, optional semantic search and four-step walkthrough |
-| public/ai.js, public/ai-worker.mjs | Lazy on-device MiniLM embeddings; bounded catalog-only rankings, no preference inference service |
+| public/discovery.js, public/guide.js | Trusted catalog, keyword search, availability and four-step walkthrough |
 | app/recommendations/ | Confirmed hard eligibility, local semantic comparison, recovery suggestions and optional CPU-only embeddings/assets |
 | evaluation/ | Frozen synthetic fixtures, benchmark runner, actual inference/route timing and honest reproducible metrics |
 | public/demo.js | Independent in-memory fictional three-person model, readiness, sequential capture, pending compensation, local tickets and duplicate admission rejection |
@@ -29,6 +28,6 @@ The real room uses one participant per browser profile. Aliases cannot switch id
 
 The lab receives copied catalog DTOs and has no network, cookie, session or persistent-storage capability. Its reset affects only its model. Tests of the model do not establish provider settlement. The application ticket checker verifies only the current owner's confirmed reference and does not redeem supplier admission.
 
-Read [AI and guided UX](AI_AND_GUIDED_UX.md). New code belongs in its `app/<feature>/` package; root Python modules are compatibility imports for existing scripts and tests. Run unittest, frontend, AI and demo contracts, dependency checking after dependency edits, and git diff --check. Record actual browser, real Sandbox, Gemini and PostgreSQL evidence separately. No commit/push/deploy is implied by implementation authorization.
+Read [AI and guided UX](AI_AND_GUIDED_UX.md) and [the current phased experience guide](GUIDED_EXPERIENCE_PHASES.md). New code belongs in its `app/<feature>/` package. Root Python modules were removed in the collaborator refactor: run `python -m app` and `python -m app.recommendations.assets` instead. `app/groups/journey.py` derives read-only caller guidance; `app/planning/catalog.py` derives public availability snapshots; `app/planning/demo_catalog.py` owns explicit development fixture creation. Run unittest, frontend and demo contracts; check dependencies after dependency edits; run the real CPU benchmark when model assets are available; then run git diff --check. Record actual browser, real Sandbox, Gemini and PostgreSQL evidence separately. No commit/push/deploy is implied by implementation authorization.
 
 The subsequent AI candidate builds on fb07b49. Read [recommendation design](RECOMMENDATION_DESIGN.md) and [actual results](../evaluation/RESULTS.md). No model call belongs in polling, quotes, payment operations or a DB transaction. Preserve user-requested compromise default and explicit alternatives. Synthetic quality is not real-user satisfaction.
