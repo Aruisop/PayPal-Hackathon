@@ -28,7 +28,11 @@ Full feature findings, evidence and remaining judge/demo gates are in [docs/FEAT
 - **197 Python tests passed**, frontend contracts passed, the actual DOM/temporary-API/local-BGE flow passed, 12 isolated demo checks passed, and `pip check` found no broken requirements. Real two-buyer Sandbox, PostgreSQL and rendered desktop/mobile acceptance remain unverified.
 - The approved computer-use initialization failed before browser launch (`windows sandbox failed: helper_unknown_error: setup refresh had errors`), so no visual acceptance is claimed. The authenticated readiness check requested `/api/config`, which created one ordinary participant session in the active database; no group, preference, catalog, inventory or financial rows were created by that check.
 
-All audit changes remain local and uncommitted. No new commit, push, merge, migration, payment or saved catalog write was performed.
+At the audit cutoff on 28 October, the audit changes were still local and uncommitted. No migration, payment or saved catalog write was performed.
+
+## 29 October 2026: publication to `dev/aarya`
+
+Published the audited app, UI, tests and handoff changes to [Aruisop/PayPal-Hackathon, `dev/aarya`](https://github.com/Aruisop/PayPal-Hackathon/tree/dev/aarya). Feature commit `01beea6` advanced the branch from `4fabe98` by a normal fast-forward. This includes the empty-catalog guidance, the single server-local group AI path, related cleanup and tests. The 197-test Python suite, frontend contract, actual DOM/API flow with real BGE weights, 12 isolated demo checks, `pip check` and `git diff --check` passed before publication. No force push, migration, catalog write, payment or deployment was performed. Rendered-browser review and real multi-buyer Sandbox acceptance remain outstanding.
 
 Date: 18 October 2026. Base: Panchadip-128's `slice/3-collaborative-booking-and-equal-payments`, commit `41ec3d7`. Status: implementation review candidate; acceptance and live-payment evidence remain pending.
 

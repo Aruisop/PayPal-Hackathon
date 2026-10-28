@@ -53,4 +53,4 @@ The live app cannot demonstrate an end-to-end group recommendation or checkout u
 4. Gather human relevance/usefulness judgments before claiming the algorithm improves group outcomes. Current evaluations are tiny, synthetic and were used for model selection.
 5. If submitting to hosted infrastructure, verify BGE setup, managed PostgreSQL, HTTPS, concurrent booking/recovery and operator recovery procedures.
 
-No saved offer, inventory, group preference, booking, payment or ticket was deliberately edited by this implementation. One read of the live authenticated config endpoint created an ordinary empty participant session; no group or financial records were created by that check. No commit, push, merge or deployment was made.
+No saved offer, inventory, group preference, booking, payment or ticket was deliberately edited by this implementation. One read of the live authenticated config endpoint created an ordinary empty participant session; no group or financial records were created by that check. At the 28 October audit cutoff, the changes had not yet been committed or pushed; publication is recorded in [Aarya_changes.md](../Aarya_changes.md).
