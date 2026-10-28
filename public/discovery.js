@@ -8,8 +8,20 @@
     return value;
   };
   const price = (cents) => new Intl.NumberFormat(undefined, {style: 'currency', currency: 'USD'}).format(cents / 100);
-  let offers = [], filter = 'all', query = '', scores = null, rankingMode = 'basic', sequence = 0, onPlan;
-  let scout = null, loading = false;
+  const stopWords = new Set(['a', 'an', 'the', 'i', 'we', 'our', 'my', 'would', 'like', 'want', 'something', 'for', 'with', 'and', 'or', 'to', 'of', 'in', 'at', 'is', 'it']);
+  let offers = [], filter = 'all', query = '', onPlan;
+  function searchTerms(value) {
+    return [...new Set(String(value || '').toLocaleLowerCase().match(/[a-z0-9]+/g) || [])]
+      .filter((word) => !stopWords.has(word));
+  }
+  function searchText(offer) {
+    let genre = '';
+    if (typeof offer.meta === 'object' && offer.meta) genre = offer.meta.genre || '';
+    else if (typeof offer.meta === 'string') {
+      try { genre = JSON.parse(offer.meta).genre || ''; } catch {}
+    }
+    return [offer.title, offer.description, offer.domain, genre].filter(Boolean).join(' ').toLocaleLowerCase();
+  }
   function art(domain, index) {
     const palettes = [['#24325d', '#7883ba', '#d2c0ab'], ['#845c79', '#bf879b', '#f3d3a6'], ['#367270', '#94b49f', '#e8d9ad']];
     const [bg, hill, sun] = palettes[index % palettes.length];
@@ -19,14 +31,16 @@
     return `<svg viewBox="0 0 360 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="360" height="200" fill="${bg}"/>${shape}</svg>`;
   }
   function candidates() {
-    const people = Number($('scout-people').value || 3), raw = $('scout-budget').value;
+    const people = Number($('catalog-people').value || 3), raw = $('catalog-budget').value;
     if (![2, 3, 4].includes(people)) throw new Error('Choose 2–4 people.');
     if (raw !== '' && !/^\d+(\.\d{1,2})?$/.test(raw)) throw new Error('Use a nonnegative budget with at most two decimal places.');
     const ceiling = raw === '' ? null : Math.round(Number(raw) * 100);
     if (ceiling !== null && !Number.isSafeInteger(ceiling)) throw new Error('Budget is too large.');
-    return offers.filter((offer) => Date.parse(offer.scheduleTime) > Date.now() &&
+    const words = searchTerms(query);
+    return offers.filter((offer) => (offer.availability ? offer.availability.status !== 'past' : Date.parse(offer.scheduleTime) > Date.now()) &&
       (filter === 'all' || offer.domain === filter) &&
-      (ceiling === null || (offer.domain === 'movie' ? offer.priceMinor : Math.ceil(offer.priceMinor / people)) <= ceiling));
+      (ceiling === null || (offer.domain === 'movie' ? offer.priceMinor : Math.ceil(offer.priceMinor / people)) <= ceiling) &&
+      words.every((word) => searchText(offer).includes(word)));
   }
   function render(newFilter, newOffers) {
     if (newFilter) filter = newFilter;
@@ -34,25 +48,23 @@
     const container = $('catalog-offers-grid'); container.replaceChildren();
     let visible;
     try { visible = candidates(); } catch (error) { $('catalog-result-note').textContent = error.message; return; }
-    let mode = 'basic';
-    if (query && scores) {
-      const positions = new Map(scores.map((item, index) => [item.id, index]));
-      visible.sort((a, b) => (positions.get(a.id) ?? 999) - (positions.get(b.id) ?? 999));
-      if (rankingMode === 'basic') visible = visible.filter((offer) => scores.find((item) => item.id === offer.id)?.score > 0);
-      mode = rankingMode;
-    }
-    $('catalog-result-note').textContent = `${visible.length} catalog experience${visible.length === 1 ? '' : 's'}${query ? mode === 'ai' ? ' · ordered by on-device AI similarity' : ' · keyword search' : ''}. Preferences and actual group availability are checked in your room.`;
+    $('catalog-result-note').textContent = `${visible.length} upcoming experience${visible.length === 1 ? '' : 's'}${query ? ' matching your search' : ''}.`;
     if (!visible.length) {
       const empty = node('div', undefined, 'empty-state');
-      empty.append(node('h3', 'A little more room for possibility?'), node('p', 'Try another category, a flexible budget or fewer keywords. Optional AI searches meaning instead of exact words.'));
+      const upcoming = offers.some((offer) => offer.availability ? offer.availability.status !== 'past' : Date.parse(offer.scheduleTime) > Date.now());
+      empty.append(node('h3', !upcoming ? 'No upcoming sessions yet.' : query ? 'No experiences match that search.' : 'No experiences match these filters.'),
+        node('p', !upcoming ? 'Ask the organizer to add future dates. Your saved groups and bookings are still available.' :
+          'Try fewer search words, a different category or a higher budget. The catalog and your saved preferences are unchanged.'));
       container.append(empty); return;
     }
     visible.forEach((offer, index) => {
+      const people = Number($('catalog-people').value || 3);
+      const groupFits = !offer.availability || offer.availability.groupSizes.includes(people);
       const card = node('article', undefined, 'experience-card');
       const image = node('div', undefined, 'experience-art'); image.innerHTML = art(offer.domain, index);
       const tags = node('div', undefined, 'card-meta-tags');
       tags.append(node('span', offer.domain === 'movie' ? 'CINEMA NIGHT' : 'OUTDOOR ESCAPE', 'art-category'),
-        node('span', `${offer.resources.filter((item) => item.state === 'FREE').length} places open`, 'card-capacity-pill'));
+        node('span', groupFits ? `${offer.resources.filter((item) => item.state === 'FREE').length} places open` : `No group of ${people} available`, 'card-capacity-pill'));
       image.append(tags, node('span', offer.domain === 'movie' ? 'A BIGGER KIND OF NIGHT.' : 'TAKE THE SCENIC ROUTE.', 'art-vibe-label'));
       const body = node('div', undefined, 'card-body');
       body.append(node('h3', offer.title), node('p', offer.description, 'card-desc'),
@@ -61,50 +73,27 @@
       const amount = node('div'); amount.append(node('strong', price(offer.priceMinor), 'card-price-val'), node('small', offer.domain === 'movie' ? 'per person' : 'fixed group total', 'card-price-secondary'));
       pricing.append(amount, node('span', 'Fictional experience', 'card-price-label')); body.append(pricing);
       if (offer.domain === 'excursion') {
-        const people = Number($('scout-people').value || 3), base = Math.floor(offer.priceMinor / people), remainder = offer.priceMinor % people;
+        const people = Number($('catalog-people').value || 3), base = Math.floor(offer.priceMinor / people), remainder = offer.priceMinor % people;
         body.append(node('p', `For ${people}: ${Array.from({length: people}, (_, i) => price(base + Number(i < remainder))).join(' + ')}`, 'fine'));
       }
       const action = node('button', 'Plan this together ↗', 'btn btn-outline'); action.type = 'button';
+      action.disabled = !groupFits;
+      if (!groupFits) body.append(node('p', 'There are not enough adjacent seats or places for this group size. Try another session or group size.', 'fine'));
       action.addEventListener('click', () => onPlan(offer.id)); body.append(action);
-      if (query && mode === 'ai') body.append(node('p', '✦ On-device AI vibe match · not a budget or consensus score', 'ai-result-tag'));
       card.append(image, body); container.append(card);
     });
   }
-  async function search() {
-    const token = ++sequence;
-    query = $('scout-query').value.trim();
-    if (!query) { scores = null; render(); return; }
-    if (query.length > 1000) { $('scout-status').textContent = 'Use a description under 1000 characters.'; return; }
-    $('scout-status').textContent = scout.isReady() ? 'Finding the meaning in your description, on this device…' : 'Searching catalog keywords. Enable AI for meaning-based discovery.';
-    try {
-      const ranked = scout.isReady() ? await scout.rank(query, offers) : root.GroupPayAI.keywordRank(query, offers);
-      if (token !== sequence) return;
-      scores = ranked; rankingMode = scout.isReady() ? 'ai' : 'basic'; render();
-      $('scout-status').textContent = rankingMode === 'ai' ? 'Ranked on your device. AI helps with the vibe; the room verifies the group fit.' : 'Keyword results. Optional AI understands descriptions beyond exact words.';
-    } catch (error) {
-      if (token !== sequence) return;
-      scores = root.GroupPayAI.keywordRank(query, offers); rankingMode = 'basic'; render();
-      $('scout-status').textContent = `${error.message} Showing keyword results.`;
-    }
+  function search() {
+    query = $('catalog-search-query').value.trim();
+    if (query.length > 1000) { $('catalog-search-message').textContent = 'Use a description under 1000 characters.'; return; }
+    render();
+    $('catalog-search-message').textContent = query ? 'Showing catalog text matches. Your group room checks confirmed limits and capacity.' : 'Showing all upcoming experiences.';
   }
   function init(options) {
     onPlan = options.onPlan;
-    scout = root.GroupPayAI.create({onStatus(message, state) {
-      $('scout-status').textContent = message;
-      $('scout-enable').textContent = state === 'loading' ? 'Loading AI assets…' : state === 'ready' ? 'AI ready · turn off' : 'Enable on-device AI';
-    }});
-    $('scout-form').addEventListener('submit', (event) => { event.preventDefault(); search(); });
-    $('scout-enable').addEventListener('click', async () => {
-      if (loading) return;
-      if (scout.isReady()) { sequence++; scout.disable(); rankingMode = 'basic'; scores = query ? root.GroupPayAI.keywordRank(query, offers) : null; render(); return; }
-      loading = true; $('scout-enable').disabled = true;
-      try { await scout.enable(); if (query) await search(); }
-      catch (error) { $('scout-status').textContent = error.message; }
-      finally { loading = false; $('scout-enable').disabled = false; }
-    });
-    $('scout-clear').addEventListener('click', () => { sequence++; query = ''; scores = null; $('scout-query').value = ''; render(); $('scout-status').textContent = scout.isReady() ? 'On-device AI ready. Describe a new vibe.' : 'Basic search is ready. Enable AI if you want meaning-based discovery.'; });
-    for (const id of ['scout-people', 'scout-budget']) $(id).addEventListener('change', () => render());
-    document.querySelectorAll('[data-vibe]').forEach((control) => control.addEventListener('click', () => { $('scout-query').value = control.dataset.vibe; search(); }));
+    $('catalog-search-form').addEventListener('submit', (event) => { event.preventDefault(); search(); });
+    $('catalog-search-clear').addEventListener('click', () => { query = ''; $('catalog-search-query').value = ''; render(); $('catalog-search-message').textContent = 'Showing all upcoming experiences.'; });
+    for (const id of ['catalog-people', 'catalog-budget']) $(id).addEventListener('change', () => render());
   }
-  root.GroupPayDiscover = {init, render, rankVerified: (query, options) => scout.rank(query, options), aiReady: () => !!scout?.isReady()};
+  root.GroupPayDiscover = {init, render, searchTerms, searchText};
 })(window);

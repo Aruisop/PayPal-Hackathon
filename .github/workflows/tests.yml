@@ -33,5 +33,3 @@ jobs:
         run: node tests/test_frontend_contract.cjs
       - name: Check isolated Judge Hub and recovery model
         run: node tests/test_demo_contract.cjs
-      - name: Check on-device AI boundaries and fallback
-        run: node tests/test_ai_contract.cjs

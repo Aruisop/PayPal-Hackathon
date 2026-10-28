@@ -1,5 +1,39 @@
 # Aarya changes: guided UI improvements and integration review
 
+## 28 October 2026: Common Ground phases 1 and 2
+
+Fetched `Aruisop/PayPal-Hackathon` `dev/aarya` and fast-forwarded the clean nested application from `452d430` to `4fabe98`, incorporating the collaborators' feature-package refactor. The outer repository, including its separate `dev-snikitha/` checkout, is untouched. This new implementation remains local and uncommitted.
+
+- Added backend-derived caller guidance (`app/groups/journey.py`, existing room response), staged preference/comparison UI, a truthful Common Ground brief and retained caller-local discovery intent. Confirmation, selection, quote, individual approval, recovery and tickets continue through the existing services.
+- Added an opaque planning revision so peer edits invalidate stale comparisons/quotes/proposals on refresh. No peer budgets, tastes or raw preference payloads are exposed by the new fields.
+- Added server-checked public catalog availability for group sizes and cinema adjacency, expired-catalog guidance, unavailable-card handling and clearer price basis. Past offers remain available for restoring saved reservations.
+- Repaired model asset lookup broken by the refactor, anchored to existing application instance/ai-models; corrected removed-root-file setup commands. Actual local BGE inference passes in the updated flow.
+- Added development-only `python -m app prepare-demo` for idempotent append-only fictional future sessions. Automatic approval review rejected applying it to the active database because workspace preservation instructions require explicit permission for that write. The active database was checked read-only as revision 5 with five existing catalog sessions; no active rows, credentials or financial state were changed.
+- 197 Python tests passed in 53.502 seconds; frontend, AI-worker and 12 demo checks passed. Actual DOM + live temporary API + real BGE passed staged navigation, starting-point retention, summary, explicit tradeoffs, peer-edit and roster invalidation. A new HTTP test covers the full guided journey through fake-provider capture and private tickets. HTML nesting and 213 unique IDs verified. Browser rendering remains unverified because the computer-use kernel fails during sandbox initialization. No genuine provider payment was initiated.
+- The main app is running at http://localhost:8000 and the isolated planning preview at http://127.0.0.1:8021. Exact current HTML/controllers/CSS and no-store headers were checked. Read-only fingerprints before/after startup and live use matched for every table except participant-session metadata; groups, preferences, original catalog/resources, payment operations and tickets are unchanged. A browser session was initialized while the live app was available. The blocked catalog write was not retried.
+
+The source plan, run commands, acceptance criteria and remaining work are in [docs/GUIDED_EXPERIENCE_PHASES.md](docs/GUIDED_EXPERIENCE_PHASES.md). The reference website was inaccessible; no claim is made that its appearance was inspected or reproduced. This extends the existing design around GroupPay's own problem. No new commit, push, merge or deployment has been performed.
+
+### Empty-catalog usability correction (28 October 2026)
+
+User testing showed that switching from cinema to outdoor escapes still led to an unhelpful no-results panel. The cause was the catalog: there were no future bookable sessions in the selected category, so budget rescue and AI comparison had nothing to work on. The room now states future-session and group-capacity availability before comparison, disables ranking when there is nothing to rank, hides preference rescue when no session can be unlocked, and offers a category switch only if the other category has a bookable session for the current group size. When neither category has sessions, it tells the organizer what to fix. Removed the duplicate rules-only comparison button; the single comparison endpoint already returns verified matches when semantic ranking is unavailable. Focused frontend contract and isolated DOM/API/BGE checks pass. No catalog, inventory or financial state was changed; authenticated readiness initialized the participant session documented below.
+
+### Adversarial feature audit and AI consolidation (28 October 2026)
+
+Full feature findings, evidence and remaining judge/demo gates are in [docs/FEATURE_AUDIT.md](docs/FEATURE_AUDIT.md). The audit confirmed the app's actual server-local BGE model is prepared and real local embeddings work without Gemini. Its authenticated recommendation route has passed with real BGE weights against temporary synthetic data. The active saved catalog has no future options, which correctly prevents ranking; no catalog setup was applied to the saved database.
+
+- Removed the second browser MiniLM model, CDN worker/download controls and Plan Rescue reranking because it duplicated group comparison and had no real-browser execution evidence. Discover retains plain title/description/genre keyword search; labels no longer claim semantic matching there.
+- Updated the room so missing dates/capacity are clear, comparison is disabled when no option can be ranked, rescue is hidden when no real session could be unlocked, and category switching appears only when the alternate category is bookable for this roster.
+- Audited invite/privacy, preference confirmation, group ranking, rescue, quote/booking, PayPal authorization/capture/recovery, tickets, solo simulation, workshops and hosting; the audit labels fake-provider, synthetic, live-model and unverified-browser evidence separately.
+- **197 Python tests passed**, frontend contracts passed, the actual DOM/temporary-API/local-BGE flow passed, 12 isolated demo checks passed, and `pip check` found no broken requirements. Real two-buyer Sandbox, PostgreSQL and rendered desktop/mobile acceptance remain unverified.
+- The approved computer-use initialization failed before browser launch (`windows sandbox failed: helper_unknown_error: setup refresh had errors`), so no visual acceptance is claimed. The authenticated readiness check requested `/api/config`, which created one ordinary participant session in the active database; no group, preference, catalog, inventory or financial rows were created by that check.
+
+At the audit cutoff on 28 October, the audit changes were still local and uncommitted. No migration, payment or saved catalog write was performed.
+
+## 29 October 2026: publication to `dev/aarya`
+
+Published the audited app, UI, tests and handoff changes to [Aruisop/PayPal-Hackathon, `dev/aarya`](https://github.com/Aruisop/PayPal-Hackathon/tree/dev/aarya). Feature commit `01beea6` advanced the branch from `4fabe98` by a normal fast-forward. This includes the empty-catalog guidance, the single server-local group AI path, related cleanup and tests. The 197-test Python suite, frontend contract, actual DOM/API flow with real BGE weights, 12 isolated demo checks, `pip check` and `git diff --check` passed before publication. No force push, migration, catalog write, payment or deployment was performed. Rendered-browser review and real multi-buyer Sandbox acceptance remain outstanding.
+
 Date: 18 October 2026. Base: Panchadip-128's `slice/3-collaborative-booking-and-equal-payments`, commit `41ec3d7`. Status: implementation review candidate; acceptance and live-payment evidence remain pending.
 
 ## AI publication checkpoint

@@ -23,7 +23,22 @@
       !!booking.myShare && booking.myShare.canAuthorize !== false &&
       !['AUTHORIZED', 'CAPTURED', 'VOIDED', 'REFUNDED'].includes(booking.myShare.state);
   }
-  const helpers = {cents, constraints, canApprove};
+  function futureOffers(offers, domain, now = Date.now()) {
+    return (offers || []).filter((offer) => {
+      if (offer.domain !== domain) return false;
+      if (offer.availability) return offer.availability.status !== 'past';
+      const scheduled = Date.parse(offer.scheduleTime);
+      return Number.isFinite(scheduled) && scheduled > now;
+    });
+  }
+  function upcomingOffers(offers, domain, groupSize, now = Date.now()) {
+    return futureOffers(offers, domain, now).filter((offer) => {
+      const availability = offer.availability;
+      return !availability || (availability.status === 'available' &&
+        (!Array.isArray(availability.groupSizes) || availability.groupSizes.includes(groupSize)));
+    });
+  }
+  const helpers = {cents, constraints, canApprove, futureOffers, upcomingOffers};
   if (typeof module !== 'undefined' && module.exports) module.exports = helpers;
   if (typeof document === 'undefined') return;
 
@@ -41,7 +56,8 @@
   const state = {group: null, booking: null, room: null, preference: null, offer: null, seats: [], quote: null,
     epoch: 0, sequence: 0, busy: false, approval: false, buttons: null, buttonKey: '', ticket: null,
     chatKey: '', poll: null, sdk: null, options: null, error: null,
-    draft: null, edited: false, rescues: [], rescueCompare: false, pendingAI: false, comparing: false};
+    draft: null, edited: false, rescues: [], rescueCompare: false, pendingAI: false, comparing: false,
+    plan: null, startingOffer: null};
   const path = (id, suffix = '') => `/api/groups/${encodeURIComponent(id)}${suffix}`;
   const current = (id, epoch) => state.group?.id === id && state.epoch === epoch;
   const locked = () => state.busy || state.approval;
@@ -71,6 +87,64 @@
   function bubble(parent, label, text, mine = false) {
     const item = node('div', undefined, `chat-msg ${mine ? 'chat-msg-own' : 'chat-msg-helper'}`);
     item.append(node('strong', label), node('p', text)); parent.append(item);
+  }
+  function plannerView(view) {
+    const comparing = view === 'comparison';
+    $('room-preferences-stage').hidden = comparing;
+    $('room-comparison-stage').hidden = !comparing;
+    $('room-show-preferences').setAttribute('aria-pressed', String(!comparing));
+    $('room-show-comparison').setAttribute('aria-pressed', String(comparing));
+  }
+  function renderBrief() {
+    const plan = state.plan, mode = plan?.recommendation?.mode;
+    const labels = {semantic: 'Local AI comparison', needs_tastes: 'Verified rules · add likes for AI',
+      needs_clarification: 'Review taste descriptions', single_option: 'One eligible choice',
+      no_matches: 'Review the blockers', needs_confirmation: 'Waiting for confirmation',
+      needs_members: 'Invite a friend', unavailable: 'Verified rules · AI unavailable'};
+    $('brief-confirmed').textContent = `${state.room?.confirmedCount || 0} / ${state.group.memberCount}`;
+    $('brief-choices').textContent = plan?.allConfirmed && mode !== 'needs_clarification' ? String(plan.matches?.length || 0) : 'Not checked';
+    $('brief-method').textContent = state.comparing ? 'Comparing…' : labels[mode] || (plan ? 'Verified rules' : 'Not compared yet');
+    const starting = state.startingOffer;
+    $('room-starting-point').textContent = starting ? `Your starting point: ${starting.title}. ${plan?.allConfirmed ?
+      plan.matches?.some((offer) => offer.id === starting.id) ? 'It fits the current confirmed constraints.' :
+        mode === 'needs_clarification' ? 'Review tastes before comparing it.' : 'It is not in the current matches; review alternatives.' :
+      'We will check it with everyone’s confirmed preferences.'}` : 'A shared decision, with each person’s limits respected.';
+    $('room-comparison-readiness').textContent = state.room?.journey?.detail ||
+      'Everyone confirms privately before we compare. You can return to your own preferences at any time.';
+  }
+  function renderCatalogStatus() {
+    const domain = $('room-domain').value;
+    const groupSize = state.group?.memberCount || 1;
+    const offers = state.options.getOffers();
+    const available = upcomingOffers(offers, domain, groupSize);
+    const future = futureOffers(offers, domain);
+    const alternative = domain === 'excursion' ? 'movie' : 'excursion';
+    const alternativeOffers = upcomingOffers(offers, alternative, groupSize);
+    const alternativeFuture = futureOffers(offers, alternative);
+    const domainName = domain === 'excursion' ? 'outdoor escapes' : 'cinema nights';
+    const alternativeName = alternative === 'excursion' ? 'outdoor escapes' : 'cinema nights';
+    const status = $('room-catalog-status');
+    status.replaceChildren(); status.textContent = '';
+    $('room-rescue-card').hidden = available.length === 0;
+    $('room-ai-recommend').disabled = $('room-ai-recommend').disabled || available.length === 0;
+    $('room-ai-recommend').textContent = state.comparing ? 'Comparing your group…' :
+      available.length ? 'Compare AI suggestions' : 'No upcoming sessions';
+    if (available.length) {
+      status.textContent = `${available.length} bookable upcoming ${domainName} ${available.length === 1 ? 'option' : 'options'} for ${groupSize} ${groupSize === 1 ? 'person' : 'people'}.`;
+      return;
+    }
+    status.append(node('span', `${future.length ? `Upcoming ${domainName} exist, but none currently have enough available places` : `No upcoming ${domainName} are listed`} for your group of ${groupSize}. Your confirmed preferences are saved; nothing was booked.`));
+    if (alternativeOffers.length) {
+      status.append(button(`View ${alternativeOffers.length} ${alternativeName}`, () => {
+        $('room-domain').value = alternative;
+        $('room-domain').dispatchEvent(new Event('change', {bubbles: true}));
+        run(compareSuggestions);
+      }, 'text-button'));
+    } else {
+      status.append(node('span', alternativeFuture.length ?
+        ` Upcoming ${alternativeName} also lack enough available places for this group. Ask the organizer to check inventory.` :
+        ` No future ${alternativeName} are listed either. Ask the organizer to add future dates.`));
+    }
   }
   function renderPrivate() {
     const parent = $('chat-messages-container'), pref = state.preference || {};
@@ -111,6 +185,7 @@
   }
   function renderProgress() {
     const group = state.group, room = state.room || {}, booking = state.booking;
+    $('room-journey-title').textContent = room.journey?.title || 'One plan. Everyone gets a say.';
     $('room-group-title').textContent = group.name;
     $('room-group-desc').textContent = `${group.memberCount} ${group.memberCount === 1 ? 'person so far' : 'people'} · ${group.role === 'organizer' ? 'You organize this group' : 'You are a member'} · independent approval, exact shares.`;
     $('room-roster-count').textContent = `${group.memberCount} members`;
@@ -124,7 +199,7 @@
       $(`room-step-${i}`).classList.toggle('is-complete', i < phase);
       $(`room-step-${i}`).setAttribute('aria-current', i === phase ? 'step' : 'false');
     }
-    let next = room.nextAction || 'Describe your preferences, then review and confirm them.';
+    let next = room.journey?.detail || room.nextAction || 'Describe your preferences, then review and confirm them.';
     if (group.memberCount < 2) next = 'Copy your invite and open it in a separate browser profile or send it to a friend. To rehearse alone, use the solo demo lab.';
     else if (booking?.state === 'CONFIRMED') next = 'All group captures are verified. Your private demonstration ticket is ready below.';
     else if (booking?.state === 'FINALIZING') next = group.role === 'organizer' ? 'All authorizations are ready. Complete the group capture pass.' : 'Your organizer can now complete group capture.';
@@ -140,7 +215,7 @@
       state.offer ? 'What happened: this experience satisfies the currently confirmed preferences. Review exact shares before reserving.' :
       'What is happening: you are planning together. Your private inputs become group constraints only after you confirm them. No payment has started.';
     $('room-explainer').textContent = explanation;
-    $('room-next-button').textContent = group.memberCount < 2 ? 'Invite a friend ↗' : booking?.state === 'CONFIRMED' ? 'See my ticket ↓' : frozen() ? 'See my share ↓' : state.offer ? 'Review places ↓' : 'Review my plan ↓';
+    $('room-next-button').textContent = group.memberCount < 2 ? 'Invite a friend ↗' : booking?.state === 'CONFIRMED' ? 'See my ticket ↓' : frozen() ? 'See my share ↓' : state.offer ? 'Review places ↓' : state.edited ? 'Review my changes' : room.journey?.actionLabel || 'Review my plan ↓';
     $('room-planning-controls').hidden = frozen();
     $('room-profile-details').hidden = frozen();
   }
@@ -185,15 +260,17 @@
   function renderControls() {
     if (!state.group) return;
     const booking = state.booking, organizer = state.group.role === 'organizer';
+    const recommendationMode = state.plan?.recommendation?.mode;
+    const comparisonNeedsNextStep = ['needs_members', 'needs_confirmation', 'needs_tastes', 'needs_clarification', 'no_matches', 'single_option'].includes(recommendationMode);
     $('btn-lock-freeze').disabled = locked() || frozen() || !organizer || !state.quote;
     $('room-quote-btn').disabled = locked() || frozen() || !organizer || !state.offer || state.seats.length !== state.group.memberCount;
-    $('room-find-matches').disabled = locked() || frozen() || state.edited;
-    $('room-ai-recommend').disabled = locked() || frozen();
+    $('room-ai-recommend').disabled = locked() || frozen() || comparisonNeedsNextStep;
     $('room-ai-recommend').textContent = state.comparing ? 'Comparing your group…' : 'Compare AI suggestions';
     $('room-ai-recommend').setAttribute('aria-busy', String(state.comparing));
     $('room-ai-objective').disabled = locked() || frozen();
+    $('room-show-preferences').disabled = locked() || frozen();
+    $('room-show-comparison').disabled = locked() || frozen() || !state.preference?.isConfirmed || state.edited;
     $('room-rescue').disabled = locked() || frozen() || state.edited;
-    $('room-rescue-ai').disabled = locked() || frozen() || state.edited;
     $('room-domain').disabled = locked() || frozen();
     for (const field of $('room-preference-review').querySelectorAll('input')) field.disabled = locked() || frozen();
     const recovery = document.querySelector('.recovery-details');
@@ -220,7 +297,7 @@
     for (const item of booking?.rosterProgress || []) roster.append(node('p', `${item.alias}: ${readable(item.state)}${item.shareValue ? ` · ${item.shareValue} ${booking.currency}` : ''}`, 'fine'));
     $('room-payment-detail').textContent = [booking?.error, booking?.message, booking?.operationInProgress ? 'An operation is in progress. Wait before rechecking.' : '', booking?.myShare?.orderID ? `Your saved order: ${booking.myShare.orderID}` : ''].filter(Boolean).join(' · ');
     if (booking?.myShare?.consentGiven) $('room-consent').checked = true;
-    renderProgress(); countdown();
+    renderProgress(); renderBrief(); renderCatalogStatus(); countdown();
     if (!state.approval) renderPayPal().catch((error) => status(error.message, true));
   }
   function countdown() {
@@ -233,12 +310,16 @@
     const id = state.group.id, epoch = state.epoch, sequence = ++state.sequence;
     const [group, booking, room] = await Promise.all([state.options.api(path(id)), state.options.api(path(id, '/booking')), state.options.api(path(id, '/room'))]);
     if (!current(id, epoch) || sequence !== state.sequence) return;
-    if (group.memberCount !== state.group.memberCount) {
+    const rosterChanged = group.memberCount !== state.group.memberCount;
+    const preferencesChanged = state.room?.planningVersion && room.planningVersion && state.room.planningVersion !== room.planningVersion;
+    if (rosterChanged || preferencesChanged) {
+      state.plan = null;
       state.offer = state.quote = null; state.seats = []; state.rescues = []; state.rescueCompare = false;
       if (state.draft) { state.draft = null; state.edited = false; state.pendingAI = false; renderPrivate(); }
       $('room-plan-results').replaceChildren(); $('room-rescue-results').replaceChildren();
       $('room-ai-actions').replaceChildren();
-      $('room-ai-ranking-note').textContent = 'Group size changed. Compare again to check the updated shares and constraints.';
+      $('room-ai-ranking-note').textContent = rosterChanged ? 'Group size changed. Compare again to check the updated shares and constraints.' :
+        'Group preferences changed. Compare again to check the latest confirmed limits.';
       renderSeats();
     }
     state.group = group; state.booking = booking; state.room = room;
@@ -251,10 +332,12 @@
     else if (booking.state !== 'CONFIRMED') { state.ticket = null; $('canvas-wallet-pass').hidden = true; }
     state.options.onGroup(group);
   }
-  async function open(id, domain = 'movie') {
+  async function open(id, domain = 'movie', startingOfferID = null) {
     const epoch = ++state.epoch;
     state.group = {id}; state.sequence++; state.approval = false;
     state.error = null;
+    state.plan = null;
+    state.startingOffer = state.options.getOffers().find((offer) => offer.id === startingOfferID) || null;
     state.draft = null; state.edited = false; state.rescues = []; state.rescueCompare = false; state.pendingAI = false; state.comparing = false;
     state.booking = state.room = state.preference = state.offer = state.quote = state.ticket = null;
     state.seats = []; state.chatKey = '';
@@ -270,6 +353,7 @@
       state.options.api(path(id)), state.options.api(path(id, '/booking')), state.options.api(path(id, '/room')), state.options.api(path(id, '/preferences'))]);
     if (!current(id, epoch)) return null;
     state.group = group; state.booking = booking; state.room = room; state.preference = preference;
+    plannerView(preference.isConfirmed ? 'comparison' : 'preferences');
     if (frozen()) state.offer = state.options.getOffers().find((offer) => offer.id === booking.offerID) || null;
     $('room-alias').value = group.myProfile?.alias || '';
     $('room-share-progress').checked = !!group.myProfile?.shareProgress;
@@ -286,6 +370,7 @@
     const plan = semantic ? await state.options.api(path(id, '/recommendations'), {domain: $('room-domain').value, objective: $('room-ai-objective').value || 'compromise'}) :
       await state.options.api(path(id, `/plan?domain=${encodeURIComponent($('room-domain').value)}`));
     if (!current(id, epoch)) return;
+    state.plan = plan; plannerView('comparison');
     state.offer = state.quote = null; state.seats = []; renderSeats();
     const parent = $('room-plan-results'); parent.replaceChildren();
     const ranking = plan.recommendation;
@@ -303,11 +388,12 @@
       actions.append(button('Refresh group progress', () => $('room-refresh').click()));
     } else if (ranking?.mode === 'needs_members') {
       actions.append(button('Copy invite', () => $('copy-invite-btn').click()));
-    } else if (ranking?.mode === 'no_matches') {
+    } else if (ranking?.mode === 'no_matches' && !plan.explanation?.startsWith('No upcoming experiences')) {
       actions.append(button('Review my budget & availability', () => reviewForAI('constraints')),
         button('Find changes I can make', () => run(() => rescue(true))));
       const alternative = $('room-domain').value === 'excursion' ? 'movie' : 'excursion';
-      actions.append(button(alternative === 'movie' ? 'Check cinema nights instead' : 'Check outdoor escapes instead', () => {
+      const alternatives = upcomingOffers(state.options.getOffers(), alternative, state.group.memberCount);
+      if (alternatives.length) actions.append(button(`View ${alternatives.length} ${alternative === 'movie' ? 'cinema nights' : 'outdoor escapes'}`, () => {
         if (locked() || frozen()) return;
         $('room-domain').value = alternative;
         $('room-domain').dispatchEvent(new Event('change', {bubbles: true}));
@@ -328,6 +414,7 @@
     else if (!plan.matches?.length) for (const conflict of plan.conflicts || []) parent.append(node('p', conflict.reason || conflict.type, 'fine'));
     for (const offer of plan.matches || []) {
       const card = node('article', undefined, 'room-match');
+      if (offer.id === state.startingOffer?.id) card.append(node('p', 'YOUR STARTING POINT · VERIFIED', 'eyebrow'));
       if (offer.recommendationLabel) card.append(node('p', offer.recommendationLabel, 'eyebrow'));
       card.append(node('h3', offer.title), node('p', schedule(offer.scheduleTime)), node('p', `Exact shares: ${offer.shareValues.join(' + ')} USD`, 'fine'));
       if (state.group.role === 'organizer') card.append(button('Review seats & shares', () => {
@@ -363,6 +450,7 @@
   }
   function reviewForAI(kind = 'tastes') {
     if (frozen()) return;
+    plannerView('preferences');
     state.pendingAI = true;
     const hasFields = !!state.preference?.interpretation;
     $('room-ai-ranking-note').textContent = hasFields && kind === 'constraints' ?
@@ -384,6 +472,7 @@
     try { return await findMatches(true); }
     catch (error) {
       if (current(id, epoch)) {
+        state.plan = null;
         state.offer = state.quote = null; state.seats = [];
         $('room-plan-results').replaceChildren(); renderSeats();
         $('room-ai-ranking-note').textContent = `Comparison could not finish. ${error.message}`;
@@ -394,10 +483,10 @@
       if (current(id, epoch)) { state.comparing = false; renderControls(); }
     }
   }
-  function renderRescues(summary, ai = false) {
+  function renderRescues(summary) {
     const compareAfterConfirm = state.rescueCompare;
     const parent = $('room-rescue-results'); parent.replaceChildren(node('p', summary));
-    $('rescue-mode').textContent = ai ? 'On-device AI ordered these verified options by your private vibe. Exact edits and eligibility were checked by server rules.' : 'Verified what-if calculations · not an AI-generated agreement. Review every proposed change.';
+    $('rescue-mode').textContent = 'Verified what-if calculations · not an AI-generated agreement. Review every proposed change.';
     for (const proposal of state.rescues.slice(0, 3)) {
       const card = node('article', undefined, 'rescue-option');
       card.append(node('h4', proposal.title), node('p', `${schedule(proposal.scheduleTime)} · Your exact share: ${proposal.ownShareValue} USD`));
@@ -408,6 +497,7 @@
       if (proposal.changes.length) card.append(button('Preview changes in my fields', () => {
         if (locked() || frozen()) return;
         state.pendingAI = compareAfterConfirm;
+        state.plan = null; plannerView('preferences');
         state.draft = proposal.constraints; state.edited = true; state.quote = state.offer = null; state.seats = [];
         $('room-plan-results').replaceChildren(); renderPrivate(); renderSeats(); renderControls();
         $('room-preference-review').scrollIntoView({block: 'center', behavior: 'auto'});
@@ -501,6 +591,7 @@
       const preference = await options.api(path(id, '/preferences'), {rawText, userTz: Intl.DateTimeFormat().resolvedOptions().timeZone});
       if (!current(id, epoch)) return;
       state.preference = preference; state.offer = state.quote = null; state.seats = [];
+      state.plan = null; plannerView('preferences');
       $('room-ai-ranking-note').textContent = '';
       $('room-ai-actions').replaceChildren();
       state.draft = null; state.edited = false; state.rescues = []; $('room-rescue-results').replaceChildren();
@@ -516,7 +607,7 @@
       const preference = await options.api(path(id, '/preferences'));
       if (!current(id, epoch)) return;
       state.draft = null; state.edited = false; state.rescues = []; $('room-rescue-results').replaceChildren();
-      state.preference = preference; renderPrivate(); await refresh();
+      state.preference = preference; state.plan = null; plannerView('comparison'); renderPrivate(); await refresh();
       if (!current(id, epoch)) return;
       const compareAfterConfirm = state.pendingAI;
       state.pendingAI = false;
@@ -534,30 +625,22 @@
       await options.api(path(id, '/profile'), {alias: $('room-alias').value.trim(), shareProgress: $('room-share-progress').checked});
       if (current(id, epoch)) { await refresh(); if (current(id, epoch)) status('Your group profile and privacy choice are saved.'); }
     });
-    $('room-find-matches').addEventListener('click', () => run(findMatches));
+    $('room-show-preferences').addEventListener('click', () => { plannerView('preferences'); });
+    $('room-show-comparison').addEventListener('click', () => { plannerView('comparison'); });
     $('room-ai-recommend').addEventListener('click', () => {
       if (locked()) return;
       if (state.edited || !state.preference?.isConfirmed) reviewForAI(); else run(compareSuggestions);
     });
     $('room-ai-objective').addEventListener('change', () => {
+      state.plan = null;
       state.offer = state.quote = null; state.seats = [];
       $('room-plan-results').replaceChildren(); $('room-ai-ranking-note').textContent = '';
       $('room-ai-actions').replaceChildren();
       renderSeats(); renderControls();
     });
     $('room-rescue').addEventListener('click', () => run(rescue));
-    $('room-rescue-ai').addEventListener('click', () => run(async () => {
-      if (!root.GroupPayDiscover.aiReady()) { state.options.openDiscover(); $('scout-enable').focus(); return; }
-      const id = state.group.id, epoch = state.epoch;
-      if (!state.rescues.length) await rescue();
-      if (!current(id, epoch) || !state.rescues.length) return;
-      const ranked = await root.GroupPayDiscover.rankVerified(state.preference?.rawText || 'A good experience with friends', state.rescues);
-      if (!current(id, epoch)) return;
-      const order = new Map(ranked.map((item, index) => [item.id, index]));
-      state.rescues.sort((a, b) => order.get(a.id) - order.get(b.id));
-      renderRescues('Verified compromises, ordered by the vibe in your private description.', true);
-    }));
     $('room-preference-review').addEventListener('input', () => {
+      state.plan = null; plannerView('preferences');
       state.edited = true; state.quote = state.offer = null; state.seats = [];
       $('room-ai-ranking-note').textContent = '';
       $('room-ai-actions').replaceChildren();
@@ -567,11 +650,17 @@
     });
     $('room-next-button').addEventListener('click', () => {
       if (state.group.memberCount < 2 && state.group.inviteURL) { $('copy-invite-btn').click(); return; }
+      if (!frozen() && !state.offer && !state.edited && state.room?.journey?.action === 'compare') {
+        plannerView('comparison'); $('room-comparison-stage').scrollIntoView({block: 'center', behavior: 'auto'});
+        $('room-ai-recommend').focus(); return;
+      }
+      if (!frozen() && !state.offer) plannerView('preferences');
       const id = state.booking?.state === 'CONFIRMED' ? 'canvas-wallet-pass' : frozen() ? 'room-payment-card' : state.offer ? 'room-selection-tools' : state.preference?.interpretation ? 'room-preference-review' : 'chat-input-form';
       $(id).scrollIntoView({block: 'center', behavior: 'auto'});
       if (id === 'chat-input-form') $('chat-input-text').focus();
     });
     $('room-domain').addEventListener('change', () => {
+      state.plan = null;
       state.offer = state.quote = null; state.seats = []; state.rescues = [];
       $('room-ai-ranking-note').textContent = '';
       $('room-ai-actions').replaceChildren();
