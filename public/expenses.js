@@ -6,7 +6,10 @@
 (function (root) {
   const CATEGORIES = ['food', 'travel', 'rent', 'entertainment', 'shopping', 'other'];
   const CATEGORY_LABEL = {food: 'Food', travel: 'Travel', rent: 'Rent', entertainment: 'Entertainment', shopping: 'Shopping', other: 'Other'};
-  const CATEGORY_ICON = {food: '\u25C9', travel: '\u2708', rent: '\u2302', entertainment: '\u266A', shopping: '\u25A3', other: '\u25C7'};
+  // Geometric text glyphs (with explicit text-presentation selectors) so no platform substitutes an emoji.
+  const CATEGORY_ICON = {food: '\u25C9', travel: '\u2708\uFE0E', rent: '\u2302', entertainment: '\u266A', shopping: '\u25A3', other: '\u25C7'};
+  // Inline stroked bell so reminder buttons keep the app's icon language instead of an emoji glyph.
+  const BELL_ICON = '<svg class="icon-bell" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg>';
 
   function cents(value) {
     const trimmed = String(value || '').trim();
@@ -407,7 +410,7 @@
           </span>
           <span class="exp-share-amount">${money(share.amountMinor, split.currency)}</span>
           <span class="exp-share-actions">
-            ${canRemind ? `<button type="button" class="btn btn-quiet exp-remind-btn" data-action="remind-share" data-split="${split.id}" data-share="${share.id}">&#128276; Remind</button>` : ''}
+            ${canRemind ? `<button type="button" class="btn btn-quiet exp-remind-btn" data-action="remind-share" data-split="${split.id}" data-share="${share.id}">${BELL_ICON}Remind</button>` : ''}
             ${toggleable ? `<button type="button" class="btn btn-quiet" data-action="toggle-settle" data-split="${split.id}" data-share="${share.id}" data-settled="${share.settled}">${share.settled ? 'Mark unsettled' : 'Mark settled'}</button>` : '<span class="fine">Always settled</span>'}
           </span>
         </li>`;
@@ -429,7 +432,7 @@
             <div class="exp-split-total">
               <span class="exp-split-amount">${money(split.totalMinor, split.currency)}</span>
               ${split.allSettled ? '<span class="badge badge-success">All settled</span>' : `<span class="badge badge-gold">${money(split.pendingMinor, split.currency)} pending</span>`}
-              ${!split.allSettled ? `<button type="button" class="btn btn-outline exp-remind-all-btn" data-action="remind-split" data-split="${split.id}">&#128276; Remind all pending</button>` : ''}
+              ${!split.allSettled ? `<button type="button" class="btn btn-outline exp-remind-all-btn" data-action="remind-split" data-split="${split.id}">${BELL_ICON}Remind all pending</button>` : ''}
             </div>
           </div>
           <ul class="exp-share-list">${split.shares.map((s) => renderShareRow(split, s)).join('')}</ul>
