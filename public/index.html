@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#17233c"><title>GroupPay - good plans, together</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap">
     <link rel="stylesheet" href="/style.css">
     <script src="/discovery.js" defer>
     </script>
@@ -11,6 +14,8 @@
     <script src="/demo.js" defer>
     </script>
     <script src="/room.js" defer>
+    </script>
+    <script src="/expenses.js" defer>
     </script>
     <script src="/app.js" defer>
     </script>
@@ -25,6 +30,7 @@
         <button id="tab-groups" type="button" class="tab-btn"><span class="nav-icon">&#9707;</span> My groups <span id="my-groups-count" class="nav-count">0</span></button>
         <button id="tab-collab" type="button" class="tab-btn"><span class="nav-icon">&#9678;</span> Group room <i id="active-group-dot" style="display:none"></i></button>
         <button id="tab-workshop" type="button" class="tab-btn"><span class="nav-icon">&#9636;</span> Workshops</button>
+        <button id="tab-expenses" type="button" class="tab-btn"><span class="nav-icon">&#8942;</span> Splits</button>
       </nav>
       <div class="rail-divider">
       </div>
@@ -416,6 +422,9 @@
         </div>
         <div id="collab-status-feed" class="status-feed" role="status" aria-live="polite">
         </div>
+      </main>
+      <main id="expenses-view" class="view-panel" hidden>
+        <div id="expenses-root"></div>
       </main>
       <main id="lab-view" class="view-panel" hidden>
         <div class="section-header page-intro">

@@ -46,6 +46,11 @@ def presentation_javascript():
     return _asset(request.path[1:])
 
 
+@blueprint.get('/expenses.js')
+def expenses_javascript():
+    return _asset('expenses.js')
+
+
 @blueprint.get('/lessons/<booking_id>')
 def lesson(booking_id):
     checkout = current_app.extensions['checkout']
