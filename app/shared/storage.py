@@ -184,6 +184,60 @@ room_messages = Table('room_messages', metadata,
     Column('text', String(1000), nullable=False),
     Column('created_at', Float, nullable=False))
 
+# Revision 6: informal expense splitting. These are IOU-style personal ledgers,
+# never PayPal-authoritative money. No table here can grant inventory, tickets
+# or payment state; settlement is a manual, participant-confirmed note only.
+expense_profiles = Table('expense_profiles', metadata,
+    Column('participant_id', ForeignKey('participants.id'), primary_key=True),
+    Column('display_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('updated_at', Float, nullable=False))
+
+expense_friends = Table('expense_friends', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('owner_id', ForeignKey('participants.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('whatsapp', String(40), nullable=False, default=''),
+    Column('created_at', Float, nullable=False),
+    UniqueConstraint('owner_id', 'name', name='uq_expense_friend_owner_name'))
+
+expense_splits = Table('expense_splits', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('owner_id', ForeignKey('participants.id'), nullable=False, index=True),
+    Column('group_id', ForeignKey('workshop_groups.id'), nullable=True),
+    Column('title', String(160), nullable=False),
+    Column('category', String(20), nullable=False, default='other'),
+    Column('total_minor', Integer, nullable=False),
+    Column('currency', String(3), nullable=False, default='USD'),
+    Column('source', String(10), nullable=False, default='manual'),
+    Column('receipt_meta_json', String(2000), nullable=False, default='{}'),
+    Column('created_at', Float, nullable=False))
+
+expense_shares = Table('expense_shares', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('split_id', ForeignKey('expense_splits.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('amount_minor', Integer, nullable=False),
+    Column('is_payer', Integer, nullable=False, default=0),
+    Column('settled', Integer, nullable=False, default=0),
+    Column('settled_at', Float, nullable=True))
+
+expense_subscriptions = Table('expense_subscriptions', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('owner_id', ForeignKey('participants.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('monthly_amount_minor', Integer, nullable=False),
+    Column('currency', String(3), nullable=False, default='USD'),
+    Column('billing_day', Integer, nullable=False),
+    Column('created_at', Float, nullable=False))
+
+expense_subscription_participants = Table('expense_subscription_participants', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('subscription_id', ForeignKey('expense_subscriptions.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('whatsapp', String(40), nullable=False, default=''))
+
 
 def identifier():
     return secrets.token_hex(16)
@@ -235,8 +289,8 @@ class Store:
     def migrate(self, target=2):
         # Target defaults to 2 to preserve Slice 2 backward compatibility contract.
         from sqlalchemy import inspect
-        if target not in (2, 3, 4, 5):
-            raise ValueError('Supported migration targets are 2, 3, 4 and 5')
+        if target not in (2, 3, 4, 5, 6):
+            raise ValueError('Supported migration targets are 2, 3, 4, 5 and 6')
         if 'schema_versions' in inspect(self.engine).get_table_names():
             with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
@@ -270,7 +324,16 @@ class Store:
                     room_messages.create(connection, checkfirst=True)
                     revision = 5
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=5))
-                if revision not in (2, 3, 4, 5):
+                if revision == 5 and target >= 6:
+                    expense_profiles.create(connection, checkfirst=True)
+                    expense_friends.create(connection, checkfirst=True)
+                    expense_splits.create(connection, checkfirst=True)
+                    expense_shares.create(connection, checkfirst=True)
+                    expense_subscriptions.create(connection, checkfirst=True)
+                    expense_subscription_participants.create(connection, checkfirst=True)
+                    revision = 6
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=6))
+                if revision not in (2, 3, 4, 5, 6):
                     raise RuntimeError('Unsupported database revision; run the documented migration')
             return
         tables = [versions, participants, workshops, bookings, attempts, entitlements,
@@ -282,6 +345,9 @@ class Store:
             tables += [group_workflows, group_operations]
         if target >= 5:
             tables += [room_messages]
+        if target >= 6:
+            tables += [expense_profiles, expense_friends, expense_splits, expense_shares,
+                       expense_subscriptions, expense_subscription_participants]
         metadata.create_all(self.engine, tables=tables)
         with self.engine.begin() as connection:
             connection.execute(insert(versions).values(id=1, revision=target))

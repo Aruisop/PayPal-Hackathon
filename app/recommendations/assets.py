@@ -1,7 +1,7 @@
 """Explicit, reproducible preparation of optional public CPU embedding assets.
 
 The application never calls this downloader. Run it before serving AI requests:
-    python model_assets.py prepare --model minilm
+    python -m app.recommendations.assets prepare --model minilm
 """
 
 import argparse
@@ -12,8 +12,9 @@ from pathlib import Path
 import tempfile
 import urllib.request
 
+from app.config import ROOT
 
-DEFAULT_ROOT = Path(__file__).resolve().parent / 'instance' / 'ai-models'
+DEFAULT_ROOT = ROOT / 'instance' / 'ai-models'
 PROFILES = {
     'minilm': {
         'repository': 'Xenova/all-MiniLM-L6-v2',
@@ -75,7 +76,7 @@ def validate_assets(model='minilm', root=None, verify_hashes=False):
             if verify_hashes and sha256(path) != expected:
                 raise ValueError('A model asset failed its pinned integrity check.')
     except (OSError, ValueError, KeyError, TypeError) as error:
-        raise ValueError(f'Local {model} assets are missing or invalid; run model_assets.py prepare --model {model}.') from error
+        raise ValueError(f'Local {model} assets are missing or invalid; run python -m app.recommendations.assets prepare --model {model}.') from error
     return directory
 
 

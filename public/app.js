@@ -106,6 +106,8 @@ const SOUNDS = {
 // MULTI-PERSONA SIMULATOR DEFINITIONS
 // -------------------------------------------------------------
 let labDemo = null;
+let expensesMounted = false;
+let expensesHandle = null;
 const DAG_NODE_INFO = {
   1: {title: 'Gather the group', badge: 'MEMBERSHIP', desc: 'Invites join a group. Each real participant keeps a separate browser session.', meta: 'Group API | Membership checks | Persistent roster'},
   2: {title: 'Confirm preferences', badge: 'PRIVATE REVIEW', desc: 'Members review their own structured preferences. A model or local parser cannot confirm for them.', meta: 'Planning API | Explicit confirmation | Private preferences'},
@@ -177,6 +179,7 @@ function setupTabs() {
   $('tab-collab')?.addEventListener('click', () => switchTab('collab'));
   $('tab-lab')?.addEventListener('click', () => switchTab('lab'));
   $('tab-workshop')?.addEventListener('click', () => switchTab('workshop'));
+  $('tab-expenses')?.addEventListener('click', () => switchTab('expenses'));
 
   $('brand-home-link')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -192,10 +195,10 @@ function setupTabs() {
 
 function switchTab(tab) {
   currentTab = tab;
-  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', lab: 'Solo demo lab', workshop: 'Workshops'}[tab] || 'Discover';
+  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', lab: 'Solo demo lab', workshop: 'Workshops', expenses: 'Splits'}[tab] || 'Discover';
   SOUNDS.click();
 
-  const tabs = ['discover', 'groups', 'collab', 'lab', 'workshop'];
+  const tabs = ['discover', 'groups', 'collab', 'lab', 'workshop', 'expenses'];
   tabs.forEach((t) => {
     const btn = $(`tab-${t}`);
     const view = $(`${t}-view`);
@@ -230,6 +233,13 @@ function switchTab(tab) {
     renderWorkshops();
     renderStatus();
     renderCheckout();
+  } else if (tab === 'expenses') {
+    if (!expensesMounted) {
+      expensesMounted = true;
+      expensesHandle = window.GroupPayExpenses.mount($('expenses-root'), {api, escapeHtml, getCsrfToken: () => config?.csrfToken || ''});
+    } else if (expensesHandle && typeof expensesHandle.refresh === 'function') {
+      expensesHandle.refresh();
+    }
   }
 }
 
@@ -266,7 +276,7 @@ function populateCreateGroupSelect() {
   const select = $('create-group-offer-select');
   if (!select) return;
   select.innerHTML = '<option value="">Decide together in your room</option>' +
-    catalogOffers.map((o) => `<option value="${o.id}">${escapeHtml(o.title)} ($${o.value} ${o.currency})</option>`).join('');
+    catalogOffers.filter((offer) => offer.availability ? offer.availability.status === 'available' : Date.parse(offer.scheduleTime) > Date.now()).map((o) => `<option value="${o.id}">${escapeHtml(o.title)} ($${o.value} ${o.currency} ${o.domain === 'movie' ? 'per person' : 'group total'})</option>`).join('');
 }
 
 // -------------------------------------------------------------
@@ -311,8 +321,8 @@ function renderMyGroups() {
           <span class="badge ${isLead ? 'badge-gold' : 'badge-sandbox'}">${isLead ? 'LEAD / ORGANIZER' : 'MEMBER'}</span>
         </div>
         <div class="group-item-meta">
-          <span>👥 ${grp.memberCount || grp.members?.length || 1} Members</span>
-          <span>⚡ Multi-Buyer PayPal Hold</span>
+          <span>${grp.memberCount || grp.members?.length || 1} Members</span>
+          <span>Multi-Buyer PayPal Hold</span>
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button type="button" class="btn btn-primary btn-sm btn-open-group" data-group-id="${grp.id}" style="flex:1;">
@@ -346,7 +356,7 @@ function renderMyGroups() {
 
 async function selectGroup(groupId, preferredOffer = null) {
   try {
-    const group = await window.GroupPayRoom.open(groupId, preferredOffer?.domain);
+    const group = await window.GroupPayRoom.open(groupId, preferredOffer?.domain, preferredOffer?.id);
     if (!group) return;
     activeGroup = group;
     $('active-group-dot').style.display = 'inline-block';
@@ -841,7 +851,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     config = await api('/api/config');
-    window.GroupPayRoom.init({api, getConfig: () => config, getOffers: () => catalogOffers, openDiscover: () => switchTab('discover'), isVisible: () => currentTab === 'collab', onGroup(group) {
+    window.GroupPayRoom.init({api, getConfig: () => config, getOffers: () => catalogOffers, isVisible: () => currentTab === 'collab', onGroup(group) {
       activeGroup = group;
       const index = myGroups.findIndex((item) => item.id === group.id);
       if (index >= 0) myGroups[index] = group;
