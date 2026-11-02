@@ -48,7 +48,19 @@ Real CPU tests compare keyword, MiniLM and BGE, with raw synthetic cases/results
 
 See [the algorithm and requirements](docs/RECOMMENDATION_DESIGN.md) and [the walkthrough](HACKATHON_SHOWCASE.md). This algorithm combines established ideas for this application; it is not claimed as a new mathematical fairness result.
 
-## One local AI feature, with a clear job
+## Optional receipt scanning with local Hugging Face vision
+
+The informal expense split form can suggest receipt fields with [Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct), pinned to a specific model revision. Prepare its optional Python packages and weights explicitly on the app server:
+
+```powershell
+..\.venv\Scripts\python.exe -m pip install -r requirements-vision.txt
+..\.venv\Scripts\python.exe -B -m app.expenses.vision_assets prepare
+..\.venv\Scripts\python.exe -B -m app serve
+```
+
+The weights live under ignored `instance/receipt-vision/` and are several gigabytes. Inference uses a CUDA GPU when PyTorch detects one, otherwise CPU with substantially more memory and latency. The scan endpoint does not download anything during a request. `GET /api/expenses/scan-status` reports dependency and asset readiness; when unavailable, enter a split manually. A selected photo is sent to this app server for inference, not to a hosted model service. The response is an unsaved editable preview; review the merchant, date, currency, category and amount before saving. Receipt extraction has no authority over group quotes, inventory, tickets or payments. Receipt accuracy and real-model latency have not yet been measured on this workspace.
+
+## One group-planning AI feature, with a clear job
 
 Discover uses straightforward keyword search over experience titles, descriptions and genres. It does not claim to understand a vibe or rank a group. The group room has the AI feature: after every member confirms, the server applies exact budget, date, time and capacity rules, then uses its prepared local BGE model to compare eligible catalog choices against members' confirmed positive likes. No Gemini key, browser model download or hosted inference call is required. If there is no eligible upcoming catalog option, ranking is disabled and the room says what needs to change; the model cannot invent activities or bypass a budget.
 

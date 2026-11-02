@@ -191,16 +191,11 @@ class ExpensesTests(unittest.TestCase):
         self.assertEqual(response.json['error'], 'RECEIPT_IMAGE_REQUIRED')
 
     def test_scan_success_returns_unsaved_editable_preview(self):
-        fake_body = json.dumps({'response': json.dumps({
+        fake_body = json.dumps({
             'merchant': 'Luigi\u2019s', 'date': '2024-01-05', 'currency': 'usd', 'total': 42.5,
-            'category': 'food', 'items': [{'name': 'Pizza', 'amount': 42.5}]})}).encode()
+            'category': 'food', 'items': [{'name': 'Pizza', 'amount': 42.5}]})
 
-        class FakeResponse:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def read(self, n=None): return fake_body
-
-        with patch('app.expenses.ocr.urllib.request.urlopen', return_value=FakeResponse()):
+        with patch('app.expenses.ocr.ReceiptScanner._infer', return_value=fake_body):
             response = self.owner.post('/api/expenses/scan-receipt',
                 data={'receipt': (io.BytesIO(b'fake-bytes'), 'receipt.jpg', 'image/jpeg')},
                 content_type='multipart/form-data',
@@ -214,8 +209,9 @@ class ExpensesTests(unittest.TestCase):
         self.assertEqual(body['fields']['total'], 42.5)
 
     def test_scan_unavailable_model_surfaces_as_503(self):
-        import urllib.error
-        with patch('app.expenses.ocr.urllib.request.urlopen', side_effect=urllib.error.URLError('refused')):
+        from app.expenses.ocr import ReceiptScanError
+        with patch('app.expenses.ocr.ReceiptScanner._infer',
+                   side_effect=ReceiptScanError('LOCAL_MODEL_UNAVAILABLE', 503)):
             response = self.owner.post('/api/expenses/scan-receipt',
                 data={'receipt': (io.BytesIO(b'fake-bytes'), 'receipt.jpg', 'image/jpeg')},
                 content_type='multipart/form-data',
@@ -223,9 +219,22 @@ class ExpensesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json['error'], 'LOCAL_MODEL_UNAVAILABLE')
 
-    def test_scan_status_reports_unavailable_without_a_live_ollama(self):
+    def test_scan_status_reports_local_model_readiness(self):
         status = self.owner.get('/api/expenses/scan-status').json
         self.assertIn('available', status)
+        self.assertEqual(status['model'], 'Qwen/Qwen3-VL-2B-Instruct')
+        self.assertIn('modelPrepared', status)
+
+    def test_scan_missing_total_stays_unsaved_and_unparsed(self):
+        with patch('app.expenses.ocr.ReceiptScanner._infer',
+                   return_value='{"merchant":"Cafe","total":null}'):
+            response = self.owner.post('/api/expenses/scan-receipt',
+                data={'receipt': (io.BytesIO(b'fake-bytes'), 'receipt.jpg', 'image/jpeg')},
+                content_type='multipart/form-data',
+                headers={'Origin': 'http://localhost', 'X-CSRF-Token': self.csrf[self.owner]})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json['parsed'])
+        self.assertIsNone(response.json['fields'])
 
     # ------------------------------------------------------------- auth boundaries
     def test_missing_session_is_unauthorized(self):

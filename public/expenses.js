@@ -2,7 +2,7 @@
 
 // Informal personal expense splitting. A private ledger between named people, not PayPal
 // payment state: nothing here owns consent, prices, inventory or tickets. Receipt scanning
-// is read-only local inference (Ollama); its output is always an editable, unsaved preview.
+// is server-local Hugging Face inference; its output is an editable, unsaved preview.
 (function (root) {
   const CATEGORIES = ['food', 'travel', 'rent', 'entertainment', 'shopping', 'other'];
   const CATEGORY_LABEL = {food: 'Food', travel: 'Travel', rent: 'Rent', entertainment: 'Entertainment', shopping: 'Shopping', other: 'Other'};
@@ -529,7 +529,7 @@
         }
       } catch { /* shown via formError on save */ }
       const scanStatus = d.scanStatus;
-      const scanDisabledNote = scanStatus && !scanStatus.available ? `<p class="fine exp-warn">Local AI offline (${escapeHtml(scanStatus.model || 'model')}) — enter details manually.</p>` : '';
+      const scanDisabledNote = scanStatus && !scanStatus.available ? `<p class="fine exp-warn">Receipt model is not ready on this server (${escapeHtml(scanStatus.model || 'model')}). Enter details manually.</p>` : '';
       return `
         <div class="modal-backdrop" id="exp-split-modal-backdrop">
           <div class="modal-card modal-card-wide">
@@ -548,15 +548,15 @@
                 <div class="exp-scan-icon" aria-hidden="true">&#9638;</div>
                 <div class="exp-scan-copy">
                   <strong>Scan a receipt</strong>
-                  <span class="fine">Local AI via Ollama &mdash; runs on your own machine. The photo is never uploaded anywhere else.</span>
+                  <span class="fine">Qwen3-VL runs on this app server. Your photo is sent to this server for an unsaved preview.</span>
                 </div>
                 <input id="exp-scan-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-                <button type="button" class="btn btn-outline" data-action="trigger-scan" ${d.scanBusy ? 'disabled' : ''}>${d.scanBusy ? 'Scanning…' : 'Scan receipt'}</button>
+                <button type="button" class="btn btn-outline" data-action="trigger-scan" ${d.scanBusy || (scanStatus && !scanStatus.available) ? 'disabled' : ''}>${d.scanBusy ? 'Scanning…' : 'Scan receipt'}</button>
                 ${d.scanPreviewUrl ? `
                   <figure class="exp-scan-preview ${d.scanBusy ? 'is-scanning' : ''}">
                     <img src="${escapeHtml(d.scanPreviewUrl)}" alt="Receipt you selected, previewed locally">
                     ${d.scanBusy ? '<span class="exp-scan-beam" aria-hidden="true"></span><span class="exp-scan-veil" aria-hidden="true"></span>' : ''}
-                    <figcaption class="fine">${d.scanBusy ? 'Reading this receipt locally…' : 'Preview only — this photo is never uploaded or saved.'}</figcaption>
+                    <figcaption class="fine">${d.scanBusy ? 'Reading this receipt on the app server…' : 'Preview only — the selected photo is not saved with the split.'}</figcaption>
                   </figure>` : ''}
               </div>
               <label>Title<input id="exp-split-title" type="text" maxlength="160" value="${escapeHtml(d.title)}" placeholder="Dinner at Luigi's"></label>
