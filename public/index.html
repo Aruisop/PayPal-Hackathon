@@ -5,7 +5,8 @@
     <meta name="theme-color" content="#17233c"><title>GroupPay - good plans, together</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"></noscript>
     <link rel="stylesheet" href="/style.css">
     <script src="/discovery.js" defer>
     </script>
@@ -236,6 +237,7 @@
                   <label class="sr-only" for="chat-input-text">Your private preferences</label>
                   <input id="chat-input-text" maxlength="1000" required placeholder="I'd love a movie, any day, under $20..."><button class="btn btn-primary">Make it a plan &#8594;</button>
                 </form>
+                <p class="fine concierge-hint">This box only records your preferences. For questions about the room, ask the Context Copilot below.</p>
                 <div class="chat-presets-bar"><button class="chip-preset" data-text="Any day and time, budget under $20 per person" type="button">Flexible, under $20</button><button class="chip-preset" data-text="An outdoor adventure, any day and time, under $40 per person" type="button">An outdoor escape</button><button class="chip-preset" data-text="Any day and time, flexible budget" type="button">I'm flexible</button>
                 </div>
                 <form id="room-preference-review" class="room-review" hidden>
@@ -308,6 +310,25 @@
                 </div>
               </div>
             </section>
+        <section class="room-panel room-agent-panel" aria-labelledby="room-agent-title">
+          <div class="panel-header"><span class="chat-icon">&#9678;</span>
+            <div>
+              <p class="eyebrow">CONTEXT COPILOT</p>
+              <h3 id="room-agent-title">Ask about this room, right now.</h3>
+            </div>
+            <span class="saved-pill">Grounded</span>
+          </div>
+          <p class="fine">This assistant uses saved room context (your group state, confirmed preferences, blockers and payment phase). It cannot approve, reserve, pay or consent for anyone.</p>
+          <div class="chat-presets-bar" id="room-agent-quick-actions"><button id="room-agent-quick-next" class="chip-preset" type="button">What is our next best step?</button><button id="room-agent-quick-blockers" class="chip-preset" type="button">Why are we blocked right now?</button><button id="room-agent-quick-payment" class="chip-preset" type="button">What is our payment risk now?</button>
+          </div>
+          <div id="room-agent-feed" class="room-agent-feed" role="log" aria-live="polite" aria-label="Context assistant responses">
+          </div>
+          <form id="room-agent-form" class="chat-input-row">
+            <label class="sr-only" for="room-agent-input">Ask the contextual assistant</label>
+            <input id="room-agent-input" maxlength="1000" required placeholder="Ask: are we ready, what blocks us, what should we do next?"><button class="btn btn-outline">Ask assistant &#8594;</button>
+          </form>
+          <p id="room-agent-status" class="fine" role="status" aria-live="polite">Waiting for your question.</p>
+        </section>
             <section class="room-panel room-shared-chat">
               <div class="panel-header"><span class="chat-icon">&#9707;</span>
                 <div>

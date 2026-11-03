@@ -88,6 +88,13 @@ Local credentials, databases, archives and runtime state are excluded. No merge,
 
 ## Latest pass: guided redesign and on-device AI
 
+### Addendum: Context Copilot and design system v2 (local, uncommitted)
+
+- Added a read-only, server-local Context Copilot: `POST /api/groups/<id>/assistant/chat` (`app/recommendations/chat.py`). It retrieves from the caller's own room snapshot with the same local BGE encoder (`Xenova/bge-small-en-v1.5`), routes intent semantically (calibrated threshold 0.62), cites its context chunks and shows the model/fallback mode. It never confirms preferences, approves, changes prices/inventory or starts payment. `public/room.js` renders it in an always-visible panel; the private preference box now states that it records preferences only.
+- Static JS/CSS are served with `no-cache` revalidation. `public/style.css` ends with a "design system v2" block (transform/opacity-only motion, reduced-motion honoured) and a "v3" block (midnight header, dark hero and page banners, vivid animated aurora background, gradient actions, faster entrances).
+- Development seed refresh (`Store.seed`): when every sample catalog session has elapsed, sessions roll forward by whole weeks (weekday and time preserved; prices, merchants, resources untouched). Without it an older development database showed an empty catalog. Production never runs `seed()`. Test: `tests/test_catalog_refresh.py`.
+- Evidence: 225 backend tests and both Node contracts passed (mocked providers; embeddings mocked only in tests). The real BGE model ran locally in the browser-driven check: Copilot answered "next step" for a new one-member group. Live PayPal Sandbox, PostgreSQL and mobile/keyboard review remain unverified.
+
 The user explicitly requested a better UI and real AI novelty after the original-style integration. This pass supersedes the prior requirement to keep the original presentation; it preserves the collaborative booking capabilities and corrected financial protocol. The source-only checkpoint is ignored under `../.local-archive/before-guided-design-*`. No financial data or credentials were copied into it.
 
 - Rebuilt `public/index.html` and `public/style.css` as a light/navy workspace with illustrated actual catalog cards, responsive rail/bottom navigation, clearer private/shared planning, staged reservation/approval/ticket controls and stronger text readability. Existing create/join, seat selection, workshop checkout and isolated rehearsal remain.

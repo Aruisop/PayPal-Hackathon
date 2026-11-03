@@ -57,7 +57,7 @@
     epoch: 0, sequence: 0, busy: false, approval: false, buttons: null, buttonKey: '', ticket: null,
     chatKey: '', poll: null, sdk: null, options: null, error: null,
     draft: null, edited: false, rescues: [], rescueCompare: false, pendingAI: false, comparing: false,
-    plan: null, startingOffer: null};
+    plan: null, startingOffer: null, agentHistory: [], agentBusy: false};
   const path = (id, suffix = '') => `/api/groups/${encodeURIComponent(id)}${suffix}`;
   const current = (id, epoch) => state.group?.id === id && state.epoch === epoch;
   const locked = () => state.busy || state.approval;
@@ -183,6 +183,113 @@
     for (const message of messages) bubble(feed, message.isSelf ? 'YOU · SHARED' : message.alias, message.text, message.isSelf);
     if (state.room?.truncated) feed.prepend(node('p', 'Showing the latest 50 shared messages.', 'fine'));
   }
+  const SOURCE_LABELS = {guardrails: 'Safety rules', group_state: 'Group state', own_constraints: 'Your constraints',
+    payment_state: 'Payment state', plan_movie: 'Cinema plan', plan_excursion: 'Outdoor plan',
+    blocked_movie: 'Cinema blockers', blocked_excursion: 'Outdoor blockers'};
+  const INTENT_LABELS = {payment: 'Payment', roster: 'Members', comparison: 'Options', blockers: 'Blockers',
+    preferences: 'Preferences', next: 'Next step', greeting: 'Hello', general: 'Not matched'};
+  const sourceLabel = (id) => SOURCE_LABELS[id] || (/^message_/.test(id) ? 'Room chat' : null);
+  let agentTimer = null;
+  function reveal(target, text, feed) {
+    clearInterval(agentTimer);
+    const motion = typeof root.matchMedia === 'function' && !root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!motion || text.length > 700) { target.textContent = text; return; }
+    const step = Math.max(2, Math.ceil(text.length / 70));
+    let shown = 0; target.textContent = '';
+    agentTimer = setInterval(() => {
+      shown = Math.min(text.length, shown + step); target.textContent = text.slice(0, shown);
+      feed.scrollTop = feed.scrollHeight;
+      if (shown >= text.length) clearInterval(agentTimer);
+    }, 16);
+  }
+  function renderAgentFeed() {
+    const feed = $('room-agent-feed'); feed.replaceChildren(); clearInterval(agentTimer);
+    if (!state.agentHistory.length) {
+      feed.append(node('p', 'Ask for the next best action, current blockers, or payment-state risk. Replies are grounded on saved room state.', 'fine'));
+      return;
+    }
+    for (const message of state.agentHistory) {
+      const item = node('div', undefined, `chat-msg ${message.role === 'user' ? 'chat-msg-own' : 'chat-msg-helper'}`);
+      item.append(node('strong', message.role === 'user' ? 'YOU' : 'CONTEXT COPILOT'));
+      if (message.pending) {
+        const dots = node('span', undefined, 'agent-typing'); dots.setAttribute('aria-label', 'Reading room context');
+        for (let i = 0; i < 3; i++) dots.append(node('i'));
+        item.append(dots); feed.append(item); continue;
+      }
+      const body = node('p', message.text); item.append(body);
+      if (message.fresh) { message.fresh = false; reveal(body, message.text, feed); }
+      if (message.tags?.length) {
+        const row = node('div', undefined, 'agent-sources');
+        for (const tag of message.tags) row.append(node('span', tag.text, `agent-chip${tag.accent ? ' agent-chip-accent' : ''}`));
+        item.append(row);
+      }
+      if (message.details?.length) {
+        const details = document.createElement('details');
+        details.className = 'agent-details';
+        details.append(node('summary', 'Why this answer, next actions and risks'));
+        for (const section of message.details) {
+          details.append(node('strong', section.title, 'agent-details-title'));
+          const list = document.createElement('ul');
+          for (const line of section.lines) list.append(node('li', line));
+          details.append(list);
+        }
+        item.append(details);
+      }
+      feed.append(item);
+    }
+    feed.scrollTop = feed.scrollHeight;
+  }
+  async function askAssistant(promptText) {
+    const prompt = String(promptText || '').trim();
+    if (!prompt || state.agentBusy || !state.group) return;
+    const id = state.group.id, epoch = state.epoch;
+    state.agentBusy = true;
+    state.agentHistory.push({role: 'user', text: prompt});
+    const history = state.agentHistory.slice(-12).map((item) => ({role: item.role, text: item.text}));
+    state.agentHistory.push({role: 'assistant', pending: true});
+    renderAgentFeed(); renderControls();
+    $('room-agent-status').textContent = 'Reading room context…';
+    const dropPending = () => { state.agentHistory = state.agentHistory.filter((item) => !item.pending); };
+    try {
+      const response = await state.options.api(path(id, '/assistant/chat'), {
+        prompt,
+        domain: $('room-domain').value,
+        objective: $('room-ai-objective').value || 'compromise',
+        history,
+      });
+      if (!current(id, epoch)) return;
+      const details = [];
+      if (response.nextActions?.length) details.push({title: 'Next actions', lines: response.nextActions});
+      if (response.riskFlags?.length) details.push({title: 'Risks', lines: response.riskFlags});
+      if (response.decisions?.length) details.push({title: 'Decision checks', lines: response.decisions.map((item) => `${item.key.replace(/_/g, ' ')}: ${item.status}. ${item.explanation}`)});
+      dropPending();
+      const sources = [...new Set((response.context?.usedChunkIDs || []).map(sourceLabel).filter(Boolean))].slice(0, 4);
+      const semantic = response.retrieval?.mode === 'semantic_local_embeddings';
+      const tags = [];
+      if (response.retrieval?.intent) tags.push({text: `Understood: ${INTENT_LABELS[response.retrieval.intent] || response.retrieval.intent}`, accent: true});
+      for (const label of sources) tags.push({text: label});
+      tags.push({text: semantic ? 'Local BGE model' : 'Keyword fallback'});
+      state.agentHistory.push({role: 'assistant', text: response.answer, fresh: true, tags,
+        details: response.retrieval?.intent === 'greeting' ? [] : details});
+      renderAgentFeed();
+      const engine = response.retrieval?.mode === 'semantic_local_embeddings'
+        ? `local ${response.retrieval.model || 'embedding model'}` : 'keyword fallback (local model unavailable)';
+      $('room-agent-status').textContent = `Grounded on ${response.context?.chunkCount || 0} context chunks · ${engine} · snapshot ${response.context?.snapshotHash || 'n/a'}`;
+    } catch (error) {
+      if (current(id, epoch)) {
+        dropPending();
+        state.agentHistory.push({role: 'assistant', text: 'I could not finish this request right now. Please retry.'});
+        renderAgentFeed();
+        $('room-agent-status').textContent = `Assistant error: ${error.message}`;
+      }
+      throw error;
+    } finally {
+      if (current(id, epoch)) {
+        state.agentBusy = false;
+        renderControls();
+      }
+    }
+  }
   function renderProgress() {
     const group = state.group, room = state.room || {}, booking = state.booking;
     $('room-journey-title').textContent = room.journey?.title || 'One plan. Everyone gets a say.';
@@ -272,6 +379,10 @@
     $('room-show-comparison').disabled = locked() || frozen() || !state.preference?.isConfirmed || state.edited;
     $('room-rescue').disabled = locked() || frozen() || state.edited;
     $('room-domain').disabled = locked() || frozen();
+    $('room-agent-form').querySelector('button').disabled = locked() || state.agentBusy || !state.group;
+    $('room-agent-quick-next').disabled = locked() || state.agentBusy || !state.group;
+    $('room-agent-quick-blockers').disabled = locked() || state.agentBusy || !state.group;
+    $('room-agent-quick-payment').disabled = locked() || state.agentBusy || !state.group;
     for (const field of $('room-preference-review').querySelectorAll('input')) field.disabled = locked() || frozen();
     const recovery = document.querySelector('.recovery-details');
     if (recovery && booking?.recoveryRequired) recovery.open = true;
@@ -339,12 +450,16 @@
     state.plan = null;
     state.startingOffer = state.options.getOffers().find((offer) => offer.id === startingOfferID) || null;
     state.draft = null; state.edited = false; state.rescues = []; state.rescueCompare = false; state.pendingAI = false; state.comparing = false;
+    state.agentHistory = [];
+    state.agentBusy = false;
     state.booking = state.room = state.preference = state.offer = state.quote = state.ticket = null;
     state.seats = []; state.chatKey = '';
     await closeButtons();
     $('canvas-wallet-pass').hidden = true; $('pass-inline-qr').replaceChildren();
     $('room-plan-results').replaceChildren(); $('room-shared-feed').replaceChildren();
     $('room-rescue-results').replaceChildren();
+    $('room-agent-feed').replaceChildren();
+    $('room-agent-status').textContent = 'Waiting for your question.';
     $('room-ai-ranking-note').textContent = '';
     $('room-ai-actions').replaceChildren();
     $('room-domain').value = domain === 'excursion' ? 'excursion' : 'movie';
@@ -359,6 +474,8 @@
     $('room-share-progress').checked = !!group.myProfile?.shareProgress;
     $('chat-input-text').value = ''; $('room-shared-text').value = '';
     renderPrivate(); renderChat(); renderSeats(); renderControls();
+    state.agentHistory = [{role: 'assistant', text: 'Context Copilot is ready. Ask what to do next, why a plan is blocked, or your current payment risk.'}];
+    renderAgentFeed();
     if (booking.state === 'CONFIRMED') await loadTicket();
     status('Your room is ready. Saved progress and shared messages refresh every five seconds.');
     history.replaceState(null, '', `/?group=${encodeURIComponent(id)}`);
@@ -620,6 +737,12 @@
       await options.api(path(id, '/messages'), {text});
       if (current(id, epoch)) { $('room-shared-text').value = ''; await refresh(); if (current(id, epoch)) status('Message shared with your group.'); }
     });
+    form('room-agent-form', async () => {
+      const text = $('room-agent-input').value.trim();
+      if (!text) return;
+      $('room-agent-input').value = '';
+      await askAssistant(text);
+    });
     form('room-profile-form', async () => {
       const id = state.group.id, epoch = state.epoch;
       await options.api(path(id, '/profile'), {alias: $('room-alias').value.trim(), shareProgress: $('room-share-progress').checked});
@@ -638,6 +761,9 @@
       $('room-ai-actions').replaceChildren();
       renderSeats(); renderControls();
     });
+    $('room-agent-quick-next').addEventListener('click', () => run(() => askAssistant('What is our next best step for this room right now?')));
+    $('room-agent-quick-blockers').addEventListener('click', () => run(() => askAssistant('Why are we blocked right now and what can I change on my side?')));
+    $('room-agent-quick-payment').addEventListener('click', () => run(() => askAssistant('What is our current payment risk and what should we do next safely?')));
     $('room-rescue').addEventListener('click', () => run(rescue));
     $('room-preference-review').addEventListener('input', () => {
       state.plan = null; plannerView('preferences');

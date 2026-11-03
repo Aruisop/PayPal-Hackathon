@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import (Column, Float, ForeignKey, Integer, MetaData, String, Table,
-                        UniqueConstraint, create_engine, event, insert, select)
+                        UniqueConstraint, create_engine, event, insert, select, update)
 
 metadata = MetaData()
 versions = Table('schema_versions', metadata, Column('id', Integer, primary_key=True),
@@ -376,6 +376,18 @@ class Store:
             # Seed collaborative booking catalog if table exists and is empty
             # Check before selecting: catching a missing-table error leaves a
             # PostgreSQL transaction aborted, even when Python catches it.
+            if inspect(connection).has_table('catalog_offers'):
+                # Development convenience (seed() never runs in production): a database older than its
+                # sample sessions would show an empty catalog, so roll fully elapsed sessions forward by whole
+                # weeks. Weekday and time are preserved; resources, prices and merchants are untouched.
+                now = datetime.now(timezone.utc)
+                stored = connection.execute(select(catalog_offers.c.id, catalog_offers.c.schedule_time)).all()
+                parsed = [(oid, datetime.fromisoformat(stamp.replace('Z', '+00:00'))) for oid, stamp in stored]
+                if parsed and all(moment <= now for _, moment in parsed):
+                    for oid, moment in parsed:
+                        weeks = (now - moment).days // 7 + 1
+                        connection.execute(update(catalog_offers).where(catalog_offers.c.id == oid).values(
+                            schedule_time=(moment + timedelta(weeks=weeks)).isoformat()))
             has_offers = (not inspect(connection).has_table('catalog_offers') or
                           bool(connection.execute(select(catalog_offers.c.id).limit(1)).first()))
             if not has_offers:
