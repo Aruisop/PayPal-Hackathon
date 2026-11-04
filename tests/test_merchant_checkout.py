@@ -58,7 +58,7 @@ class MerchantCheckoutTests(unittest.TestCase):
 
     def test_merchant_checkout_revision_is_applied_additively(self):
         with self.app.extensions['store'].engine.connect() as connection:
-            self.assertEqual(connection.execute(versions.select()).mappings().one()['revision'], 6)
+            self.assertEqual(connection.execute(versions.select()).mappings().one()['revision'], 7)
 
 
 if __name__ == '__main__':

@@ -33,3 +33,7 @@ jobs:
         run: node tests/test_frontend_contract.cjs
       - name: Check isolated Judge Hub and recovery model
         run: node tests/test_demo_contract.cjs
+      - name: Install DOM contract dependency
+        run: npm install --ignore-scripts
+      - name: Check guided DOM and semantic recommendation flow
+        run: node tests/test_ai_dom.cjs

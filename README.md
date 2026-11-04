@@ -4,7 +4,7 @@ Built on Panchadip-128's `slice/3-collaborative-booking-and-equal-payments` at `
 
 Read [Aarya_changes.md](Aarya_changes.md) for changes and evidence, the [adversarial feature audit](docs/FEATURE_AUDIT.md) for current findings and release gates, [the showcase guide](HACKATHON_SHOWCASE.md) for a walkthrough, and [the original product proposal](docs/COLLABORATIVE_BOOKING_PRD.md) for context.
 
-**28 October: Common Ground phases 1–2.** Synchronized with `dev/aarya` at `4fabe98`. The room now separates **My preferences** from **Compare our plans**, shows backend-derived next actions and a truthful comparison brief, retains your discovery starting point, and clears stale results after peer edits. Discovery uses actual upcoming-session and adjacent-capacity checks. See [the phased delivery and review guide](docs/GUIDED_EXPERIENCE_PHASES.md). The new implementation is local and uncommitted; 197 Python tests and the actual DOM/local-model integration pass. Rendered browser and live-payment acceptance remain pending.
+**Release candidate:** this branch combines guided group planning, merchant group checkout, expense splitting, and optional local receipt vision. It remains a review candidate; mocked or temporary-environment evidence does not establish browser, live-payment, or hosted-database acceptance.
 
 ## Run on this workspace
 

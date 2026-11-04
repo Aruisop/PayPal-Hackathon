@@ -54,7 +54,7 @@ def _validate_production_config(app):
 def _register_dependencies(app, paypal, encoder):
     store = Store(app.config['DATABASE_URL'])
     if app.config['APP_ENV'] != 'production':
-        store.migrate(target=6)
+        store.migrate(target=7)
         store.seed()
     else:
         from sqlalchemy import select
