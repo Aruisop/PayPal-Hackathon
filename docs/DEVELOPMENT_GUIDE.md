@@ -9,6 +9,7 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 | public/merchant.js | Focused fictional merchant checkout before PayPal: direct or fixed-roster equal group payment; delegates all money state to the booking service |
 | public/discovery.js, public/guide.js | Trusted catalog, keyword search, availability and four-step walkthrough |
 | app/recommendations/ | Confirmed hard eligibility, local semantic comparison, recovery suggestions and optional CPU-only embeddings/assets |
+| app/expenses/ocr.py, app/expenses/vision_assets.py | Unsaved receipt preview from explicit local Hugging Face vision weights; no split or payment authority |
 | evaluation/ | Frozen synthetic fixtures, benchmark runner, actual inference/route timing and honest reproducible metrics |
 | public/demo.js | Independent in-memory fictional three-person model, readiness, sequential capture, pending compensation, local tickets and duplicate admission rejection |
 | app/factory.py, app/*/routes.py | Flask factory, session/Origin/CSRF/ownership boundary, and thin feature Blueprints |

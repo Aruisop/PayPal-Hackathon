@@ -1,5 +1,9 @@
 # Aarya changes: guided UI improvements and integration review
 
+## 2 November 2026: local Hugging Face receipt vision candidate
+
+On the extracted `dev/pan` repository, replaced the informal expense receipt scanner's Ollama HTTP dependency with pinned Qwen3-VL-2B-Instruct through local Transformers inference. Optional dependencies are in `requirements-vision.txt`; an explicit `app.expenses.vision_assets prepare` downloads weights into ignored `instance/receipt-vision/`. Runtime loads only that local directory, serializes inference and leaves missing-model manual entry available. The existing receipt endpoint continues to return an unsaved editable preview and cannot write a split or payment. The UI now accurately says a photo is sent to the app server. This change does not alter the separate BGE group recommender or financial schema. The full Python suite passed 219 tests with 8 skips; `pip check` and `git diff --check` passed. Node frontend contracts could not run because Node is absent. Installing the optional vision packages stalled on the PyTorch wheel download even after a permitted network retry, so weights and real receipt inference remain unverified in this workspace.
+
 ## 28 October 2026: Common Ground phases 1 and 2
 
 Fetched `Aruisop/PayPal-Hackathon` `dev/aarya` and fast-forwarded the clean nested application from `452d430` to `4fabe98`, incorporating the collaborators' feature-package refactor. The outer repository, including its separate `dev-snikitha/` checkout, is untouched. This new implementation remains local and uncommitted.

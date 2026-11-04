@@ -20,8 +20,8 @@ def prepare_demo_catalog(store, today=None):
     today = today or datetime.now(timezone.utc).date()
     created = []
     with store.engine.begin() as connection:
-        if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 5:
-            raise RuntimeError('Demo sessions require the existing revision 5 application schema.')
+        if (connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() or 0) < 5:
+            raise RuntimeError('Demo sessions require at least the revision 5 application schema.')
         for source_id, weekday, hour, minute in SESSIONS:
             day = today + timedelta(days=(weekday - today.weekday()) % 7 or 7)
             offer_id = f'demo-{source_id}-{day:%Y%m%d}'

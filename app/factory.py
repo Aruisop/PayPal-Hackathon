@@ -9,6 +9,8 @@ from app.planning.interpreter import AIError
 from app.workshops.checkout import Checkout, CheckoutError
 from app.bookings.service import CollabBooking
 from app.shared.errors import BookingError
+from app.expenses.ocr import ReceiptScanner, ReceiptScanError
+from app.expenses.service import Expenses, ExpenseError
 from app.groups.service import GroupError, Groups
 from app.payments.paypal import PayPal, PayPalError
 from app.groups.room import Room
@@ -73,6 +75,8 @@ def _register_dependencies(app, paypal, encoder):
         room=Room(store),
         rescue=PlanRescue(store),
         recommendations=Recommendations(store, encoder if encoder is not None else LocalEncoder(model='bge', query_instruction=True)),
+        expenses=Expenses(store),
+        receipt_scanner=ReceiptScanner(),
     )
 
 
@@ -101,7 +105,7 @@ def _register_http_guards(app):
 
 
 def _register_error_handlers(app):
-    for error_type in (CheckoutError, GroupError, BookingError, AIError):
+    for error_type in (CheckoutError, GroupError, BookingError, AIError, ExpenseError, ReceiptScanError):
         app.register_error_handler(error_type, lambda error: (jsonify(error=error.issue), error.status))
 
     @app.errorhandler(PayPalError)
@@ -116,8 +120,13 @@ def _register_error_handlers(app):
     def invalid_json(_):
         return jsonify(error='INVALID_REQUEST'), 400
 
+    @app.errorhandler(413)
+    def too_large(_):
+        return jsonify(error='PAYLOAD_TOO_LARGE'), 413
+
 
 def _register_blueprints(app):
+    from .expenses.routes import blueprint as expenses_blueprint
     from .groups.routes import blueprint as groups_blueprint
     from .web.routes import blueprint as web_blueprint
     from .workshops.routes import blueprint as workshops_blueprint
@@ -125,3 +134,4 @@ def _register_blueprints(app):
     app.register_blueprint(web_blueprint)
     app.register_blueprint(groups_blueprint)
     app.register_blueprint(workshops_blueprint)
+    app.register_blueprint(expenses_blueprint)
