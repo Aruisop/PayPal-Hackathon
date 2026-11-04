@@ -40,22 +40,10 @@ def room_javascript():
     return _asset('room.js')
 
 
-@blueprint.get('/ai.js')
-def ai_javascript():
-    return _asset('ai.js')
-
-
 @blueprint.get('/discovery.js')
 @blueprint.get('/guide.js')
 def presentation_javascript():
     return _asset(request.path[1:])
-
-
-@blueprint.get('/ai-worker.mjs')
-def ai_worker():
-    response = _asset('ai-worker.mjs')
-    response.mimetype = 'text/javascript'
-    return response
 
 
 @blueprint.get('/lessons/<booking_id>')

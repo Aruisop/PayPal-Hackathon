@@ -266,7 +266,7 @@ function populateCreateGroupSelect() {
   const select = $('create-group-offer-select');
   if (!select) return;
   select.innerHTML = '<option value="">Decide together in your room</option>' +
-    catalogOffers.map((o) => `<option value="${o.id}">${escapeHtml(o.title)} ($${o.value} ${o.currency})</option>`).join('');
+    catalogOffers.filter((offer) => offer.availability ? offer.availability.status === 'available' : Date.parse(offer.scheduleTime) > Date.now()).map((o) => `<option value="${o.id}">${escapeHtml(o.title)} ($${o.value} ${o.currency} ${o.domain === 'movie' ? 'per person' : 'group total'})</option>`).join('');
 }
 
 // -------------------------------------------------------------
@@ -346,7 +346,7 @@ function renderMyGroups() {
 
 async function selectGroup(groupId, preferredOffer = null) {
   try {
-    const group = await window.GroupPayRoom.open(groupId, preferredOffer?.domain);
+    const group = await window.GroupPayRoom.open(groupId, preferredOffer?.domain, preferredOffer?.id);
     if (!group) return;
     activeGroup = group;
     $('active-group-dot').style.display = 'inline-block';
@@ -841,7 +841,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     config = await api('/api/config');
-    window.GroupPayRoom.init({api, getConfig: () => config, getOffers: () => catalogOffers, openDiscover: () => switchTab('discover'), isVisible: () => currentTab === 'collab', onGroup(group) {
+    window.GroupPayRoom.init({api, getConfig: () => config, getOffers: () => catalogOffers, isVisible: () => currentTab === 'collab', onGroup(group) {
       activeGroup = group;
       const index = myGroups.findIndex((item) => item.id === group.id);
       if (index >= 0) myGroups[index] = group;

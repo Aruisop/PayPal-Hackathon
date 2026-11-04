@@ -628,31 +628,27 @@ summary {
 .strip-arrow {
   color:#c7ccdc;
 }
-.scout-card {
+.catalog-search-card {
   border:1px solid #dfe5dd;
   background:linear-gradient(115deg,#f0f6ed,#f8faf4);
   padding:26px 28px 18px;
   border-radius:20px;
   margin:4px 0 34px;
 }
-.scout-heading {
+.catalog-search-heading {
   display:flex;
   align-items:center;
   gap:14px;
 }
-.scout-heading .btn {
-  margin-left:auto;
-  flex-shrink:0;
-}
-.scout-heading h2 {
+.catalog-search-heading h2 {
   font-size:21px;
 }
-.scout-heading p:not(.eyebrow) {
+.catalog-search-heading p:not(.eyebrow) {
   color:#6e7c68;
   font-size:13px;
   margin-top:5px;
 }
-.scout-heading .eyebrow {
+.catalog-search-heading .eyebrow {
   color:#7a8d70;
   margin-bottom:6px;
 }
@@ -667,7 +663,7 @@ summary {
   border-radius:13px;
   font-size:25px;
 }
-.scout-form {
+.catalog-search-form {
   display:flex;
   align-items:center;
   gap:12px;
@@ -677,48 +673,33 @@ summary {
   padding:7px 7px 7px 15px;
   margin-top:20px;
 }
-.scout-form input {
+.catalog-search-form input {
   border:0;
   background:transparent;
   padding-left:0;
   font-size:12px;
 }
-.scout-form .btn {
+.catalog-search-form .btn {
   flex-shrink:0;
 }
 .search-glyph {
   font-size:24px;
   color:#8c9c86;
 }
-.scout-bottom {
+.catalog-search-status {
   display:flex;
   gap:20px;
   justify-content:space-between;
   align-items:baseline;
   margin-top:9px;
 }
-.scout-bottom p {
+.catalog-search-status p {
   font-size:12px;
   color:#78856f;
   max-width:78%;
 }
-.scout-bottom button {
+.catalog-search-status button {
   font-size:12px;
-}
-.scout-prompts {
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin-top:14px;
-}
-.scout-prompts button {
-  border:1px solid #dbe4d3;
-  background:#ffffff77;
-  border-radius:20px;
-  padding:5px 12px;
-  min-height:32px;
-  color:#728067;
-  font-size:11px;
 }
 .section-header {
   display:flex;
@@ -1286,9 +1267,125 @@ summary {
 .room-match-toolbar button {
   font-size:12px;
 }
+#room-catalog-status {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  margin:-10px 24px 14px;
+}
 .room-matches {
   padding:0 24px 20px;
   font-size:13px;
+}
+.room-next-card h2 {
+  margin:3px 0 7px;
+  font-size:20px;
+  line-height:1.35;
+}
+.decision-brief {
+  display:grid;
+  grid-template-columns:1.6fr repeat(3,minmax(0,1fr));
+  gap:24px;
+  padding:24px;
+  margin:20px 0;
+  background:var(--ink);
+  color:#fff;
+  border-radius:18px;
+}
+.decision-brief>div {
+  min-width:0;
+}
+.decision-brief .eyebrow,.decision-brief span {
+  color:#c4cce2;
+}
+.decision-brief span {
+  display:block;
+  font-size:12px;
+}
+.decision-brief strong {
+  display:block;
+  margin-top:8px;
+  font-size:17px;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+}
+.brief-intro p:last-child {
+  margin:7px 0 0;
+  font-size:13px;
+  color:#e1e7f4;
+}
+.planner-tabs {
+  display:flex;
+  gap:6px;
+  margin:0 24px 20px;
+  padding:6px;
+  border-radius:13px;
+  background:var(--bg);
+}
+.planner-tabs button {
+  flex:1;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:var(--muted);
+  padding:10px 14px;
+  font-weight:600;
+}
+.planner-tabs button[aria-pressed="true"] {
+  background:var(--ink);
+  color:#fff;
+}
+.comparison-intro {
+  padding:0 24px 20px;
+}
+.comparison-intro h3 {
+  margin:8px 0;
+  font-size:21px;
+  line-height:1.4;
+}
+.comparison-intro p:last-child {
+  color:var(--muted);
+  font-size:13px;
+}
+.comparison-explanation {
+  margin:12px 0 18px;
+  font-size:12px;
+}
+.comparison-explanation summary {
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  text-decoration:underline;
+  text-underline-offset:4px;
+}
+@media (max-width:1000px) {
+  .decision-brief {
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:20px;
+  }
+  .decision-brief .brief-intro {
+    grid-column:1/-1;
+  }
+}
+@media (max-width:560px) {
+  .decision-brief {
+    grid-template-columns:1fr;
+    padding:20px;
+    gap:16px;
+  }
+  .decision-brief>div:not(.brief-intro) {
+    border-top:1px solid #39455d;
+    padding-top:12px;
+  }
+  .planner-tabs {
+    margin-left:16px;
+    margin-right:16px;
+  }
+  .planner-tabs button {
+    padding:9px;
+    font-size:12px;
+  }
 }
 .room-match {
   border:1px solid #e3e8f3;
@@ -2223,7 +2320,7 @@ summary {
     padding:0 10px;
     gap:8px;
   }
-  .scout-heading h2 {
+  .catalog-search-heading h2 {
     font-size:18px;
   }
   .rail-card {
@@ -2237,12 +2334,6 @@ summary {
 @media (max-width:940px) {
   .room-workspace {
     grid-template-columns:1fr;
-  }
-  .scout-heading {
-    flex-wrap:wrap;
-  }
-  .scout-heading .btn {
-    margin-left:58px;
   }
   .hero {
     grid-template-columns:1fr;
@@ -2376,43 +2467,39 @@ summary {
   .how-strip strong {
     font-size:11px;
   }
-  .scout-card {
+  .catalog-search-card {
     padding:20px 18px 15px;
   }
-  .scout-heading .ai-symbol {
+  .catalog-search-heading .ai-symbol {
     width:35px;
     height:35px;
     font-size:20px;
   }
-  .scout-heading {
+  .catalog-search-heading {
     gap:11px;
   }
-  .scout-heading>div {
+  .catalog-search-heading>div {
     flex:1;
   }
-  .scout-heading h2 {
+  .catalog-search-heading h2 {
     font-size:17px;
   }
-  .scout-heading .btn {
-    margin:4px 0 0;
-    width:100%;
-  }
-  .scout-form {
+  .catalog-search-form {
     flex-wrap:wrap;
     padding:8px 10px;
     gap:5px;
   }
-  .scout-form input {
+  .catalog-search-form input {
     width:calc(100% - 35px);
     font-size:13px;
   }
-  .scout-form button {
+  .catalog-search-form button {
     width:100%;
   }
-  .scout-bottom {
+  .catalog-search-status {
     gap:10px;
   }
-  .scout-bottom p {
+  .catalog-search-status p {
     max-width:80%;
     font-size:11px;
   }
@@ -2556,9 +2643,6 @@ summary {
     font-size:11px;
     padding:8px 10px;
   }
-  .scout-prompts {
-    display:none;
-  }
 }
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after {
@@ -2568,7 +2652,7 @@ summary {
   }
 }
 @media print {
-  .sidebar,.workspace-header,.app-footer,.planning-column,.room-heading,.room-journey,.room-next-card,.room-profile,.room-explainer,.room-canvas-panel,.room-lab-invite,.auth-meter-card,.status-feed,.pass-actions-bar {
+  .sidebar,.workspace-header,.app-footer,.planning-column,.room-heading,.room-journey,.room-next-card,.room-profile,.room-explainer,.decision-brief,.room-canvas-panel,.room-lab-invite,.auth-meter-card,.status-feed,.pass-actions-bar {
     display:none!important;
   }
   .app-shell {

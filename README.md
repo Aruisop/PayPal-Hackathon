@@ -1,8 +1,10 @@
 # GroupPay: guided collaborative booking UI
 
-Built on Panchadip-128's `slice/3-collaborative-booking-and-equal-payments` at `41ec3d7`. The latest user-authorized redesign gives his collaborative booking a light workspace, illustrated discovery, guided steps, private planning, shared conversation, adjacent-place selection and individual approval. Workshops and the isolated solo lab remain. This is a UI-first review candidate for `Aruisop/PayPal-Hackathon` on `dev/aarya`, not an accepted release. It includes earlier Slice 3/backend integration repairs; the complete change is not frontend-only. The subsequent recommendation candidate now has real server-local CPU inference and synthetic quality/latency evidence. Browser rendering, the separate on-device worker, live payments and human-rated group quality remain unverified.
+Built on Panchadip-128's `slice/3-collaborative-booking-and-equal-payments` at `41ec3d7`. The latest user-authorized redesign gives his collaborative booking a light workspace, illustrated discovery, guided steps, private planning, shared conversation, adjacent-place selection and individual approval. Workshops and the isolated solo lab remain. This is a review candidate for `Aruisop/PayPal-Hackathon` on `dev/aarya`, not an accepted release. It includes earlier Slice 3/backend integration repairs; the complete change is not frontend-only. The group recommender has real server-local CPU inference and synthetic diagnostic evidence. Rendered-browser acceptance, real payments and human-rated group quality remain unverified.
 
-Read [Aarya_changes.md](Aarya_changes.md) for changes and evidence, [the showcase guide](HACKATHON_SHOWCASE.md) for a walkthrough, and [the original product proposal](docs/COLLABORATIVE_BOOKING_PRD.md) for context.
+Read [Aarya_changes.md](Aarya_changes.md) for changes and evidence, the [adversarial feature audit](docs/FEATURE_AUDIT.md) for current findings and release gates, [the showcase guide](HACKATHON_SHOWCASE.md) for a walkthrough, and [the original product proposal](docs/COLLABORATIVE_BOOKING_PRD.md) for context.
+
+**28 October: Common Ground phases 1–2.** Synchronized with `dev/aarya` at `4fabe98`. The room now separates **My preferences** from **Compare our plans**, shows backend-derived next actions and a truthful comparison brief, retains your discovery starting point, and clears stale results after peer edits. Discovery uses actual upcoming-session and adjacent-capacity checks. See [the phased delivery and review guide](docs/GUIDED_EXPERIENCE_PHASES.md). The new implementation is local and uncommitted; 197 Python tests and the actual DOM/local-model integration pass. Rendered browser and live-payment acceptance remain pending.
 
 ## Run on this workspace
 
@@ -16,6 +18,10 @@ The existing virtual environment is in the parent folder. From `ppl-hxn`:
 
 Open **http://localhost:8000** and use **Ctrl+F5** after an update. Preserve the existing `.env`. For a fresh clone, create a virtual environment, copy `.env.example` only when `.env` does not exist, and install the pinned requirements.
 
+For planning, each person creates/joins the same group using a separate browser profile, enters and explicitly confirms their own fields in **My preferences**, then moves to **Compare our plans**. Returning to preferences does not save edits. Once everyone confirms, compare verified options, then let the organizer review places and exact shares. The brief identifies whether rules or actual AI supplied the comparison.
+
+If the catalog has no upcoming dates, it is not an AI error. A development operator can explicitly append new fictional dates with `..\.venv\Scripts\python.exe -B -m app prepare-demo`. It requires the existing revision 5 schema, is development-only, and preserves original records and all financial state. This write has **not** been run against the active database; user approval is pending. It never runs automatically on a page visit or server restart.
+
 Configure `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` from the intended Business Sandbox app. Buyer credentials belong only in PayPal's approval window. The fictional suppliers use that app's one Sandbox merchant; `PAYPAL_MERCHANT_ID`, if set, validates the expected seller rather than routing money.
 
 **Gemini is optional.** Without `GEMINI_API_KEY`, the local helper extracts editable preferences and matches the trusted catalog. With a key, `GEMINI_MODEL` defaults to `gemini-2.5-flash`; model failure is disclosed as local fallback. Neither mode can confirm preferences, authorize payments or set prices for the user.
@@ -26,7 +32,7 @@ No Gemini key or hosted inference service is needed. The app uses a small CPU em
 
 ```powershell
 ..\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt
-..\.venv\Scripts\python.exe -B model_assets.py prepare --model bge
+..\.venv\Scripts\python.exe -B -m app.recommendations.assets prepare --model bge
 ..\.venv\Scripts\python.exe -B -m app serve
 ```
 
@@ -42,15 +48,11 @@ Real CPU tests compare keyword, MiniLM and BGE, with raw synthetic cases/results
 
 See [the algorithm and requirements](docs/RECOMMENDATION_DESIGN.md) and [the walkthrough](HACKATHON_SHOWCASE.md). This algorithm combines established ideas for this application; it is not claimed as a new mathematical fairness result.
 
-## Separate optional browser AI: execution still unverified
+## One local AI feature, with a clear job
 
-On **Discover**, click **Enable on-device AI**, wait for the ready message, then describe a vibe such as "a peaceful outdoor adventure". Vibe Scout uses actual MiniLM sentence embeddings in a browser worker to rank the trusted catalog by meaning. It does not generate inventory, quotes, agreement scores or payment decisions. Budget and group-size controls provide discovery previews; the room checks actual confirmed constraints and availability.
+Discover uses straightforward keyword search over experience titles, descriptions and genres. It does not claim to understand a vibe or rank a group. The group room has the AI feature: after every member confirms, the server applies exact budget, date, time and capacity rules, then uses its prepared local BGE model to compare eligible catalog choices against members' confirmed positive likes. No Gemini key, browser model download or hosted inference call is required. If there is no eligible upcoming catalog option, ranking is disabled and the room says what needs to change; the model cannot invent activities or bypass a budget.
 
-AI is opt-in. First use downloads a pinned ~23 MB quantized model plus the Transformers.js/WebAssembly runtime from Hugging Face/jsDelivr. Inference runs on the device; query text is not sent to an inference service. The browser may cache model assets; the bounded embedding cache lives only in worker memory and is cleared when AI is turned off. This is semantic retrieval, not a generative chatbot. Network/model failures are disclosed as keyword search, not relabeled as AI. First-use model execution still needs a real browser smoke test on the demo machine.
-
-**Plan Rescue** in a saved group calculates which explicit edits to *your own* confirmed budget/dates/times could unlock a real option with every other confirmed member unchanged. It checks exact cent shares, timezone, future schedules, capacity and adjacency using the existing matcher. It never changes another member's limits. **Preview changes in my fields** is an unsaved draft; review it and click **Yes, these are my preferences** to save. After AI is enabled, **Rank options with my AI vibe** orders only these verified proposals by semantic similarity. The what-if calculations are deterministic rules, clearly labeled separately from AI.
-
-The pinned runtime/model attribution, module boundaries and verification limits are in [docs/AI_AND_GUIDED_UX.md](docs/AI_AND_GUIDED_UX.md).
+**Plan Rescue** is a verified what-if calculation, not another AI. It previews only changes to the current participant's budget or availability that could unlock an actual catalog option while every other confirmed member stays unchanged. Preview is unsaved; review the fields and explicitly confirm to save. This is available only when the catalog has future bookable sessions for the group.
 
 ## Try it alone first
 
@@ -63,7 +65,7 @@ Chaos leaves refunds and voids pending until each simulated recovery completes. 
 1. Create a group and copy its invite. Each real member joins in a different browser profile or device; ordinary tabs share one identity.
 2. Save your display name and privacy choice. Enter preferences in your private concierge, review/edit the actual extracted fields, then confirm. Blank fields mean flexible. All times are shown in the browser's timezone.
 3. Use the separate saved group conversation to discuss a plan. Each member confirms independently. Readiness counts and next actions update every five seconds; private budgets and payment references stay private.
-4. Find group matches. Conflicts remain visible; there is no invented agreement score or automatic first-offer fallback. The organizer reviews adjacent seats or excursion places, requests an exact server quote and holds the selection for 15 minutes.
+4. Open **Compare our plans** and use the single **Compare AI suggestions** action. The server checks confirmed limits first, then uses its prepared local BGE model when eligible choices and confirmed likes exist. If ranking cannot run, verified rules-based matches remain labeled honestly. The organizer reviews adjacent seats or excursion places, requests an exact server quote and holds the selection for 15 minutes.
 5. Each member reviews their exact share and terms, checks consent, and approves their own Sandbox order in the actual PayPal window. Server authorization runs only after buyer approval. A hold does not issue a ticket.
 6. After every authorization is verified, the organizer completes capture. Captures are sequential. Only validated completed captures for the whole frozen roster unlock each member's own fictional ticket and real QR encoding.
 7. If an outcome is unknown or pending, recheck the saved approval or reconcile group recovery. Do not reset storage or create a replacement payment. Pending refunds/voids remain unresolved until confirmed.
@@ -91,10 +93,9 @@ This can query and mutate saved Sandbox recovery operations. GET polling perform
 ..\.venv\Scripts\python.exe -m pip check
 node tests/test_frontend_contract.cjs
 node tests/test_demo_contract.cjs
-node tests/test_ai_contract.cjs
 git diff --check
 ```
 
-The full 190 Python tests pass with mocked providers, including seven Plan Rescue cases and five additional no-match diagnosis regressions. Frontend contracts execute discovery, walkthrough, actual room callbacks, an unsaved rescue preview, explicit confirmation and the payment flow using mocked DOM/HTTP/SDK. AI contracts exercise loading/retry, catalog-only ranking validation and the actual worker handler with mocked embeddings. The isolated demo has 12 contract checks. Those contract tests use mocks. Separately, the native CPU benchmark executes actual model weights and the recommendation route on temporary synthetic groups. A jsdom/live temporary API test uses real BGE inference and checks taste onboarding, no-match diagnostics, explicit tradeoff confirmation, peer limits and roster invalidation; it does not render a browser. Browser tooling currently fails during initialization; desktop/mobile, browser-worker inference, real multi-buyer Sandbox checkout, Gemini and PostgreSQL verification remain outstanding.
+The full 197-test Python suite passes with mocked payment providers and model unit doubles. Frontend contracts exercise search, walkthrough, saved room callbacks, an unsaved rescue preview, confirmation and payment callbacks using mocked DOM/HTTP/SDK. The isolated demo has 12 contract checks. Separately, the native CPU smoke test and jsdom/live temporary API flow use real BGE weights. The DOM flow verifies taste onboarding, no-match diagnostics, explicit tradeoff confirmation, peer limits and roster invalidation; it does not render a browser. The browser model path was removed because it duplicated the group recommender and had no real-browser execution evidence. Rendered desktop/mobile and genuine multi-buyer Sandbox checkout remain outstanding.
 
 The UI snapshot fb07b49 was published to [Aruisop/PayPal-Hackathon, dev/aarya](https://github.com/Aruisop/PayPal-Hackathon/tree/dev/aarya). This checkpoint extends it with the user-authorized local AI recommendation and no-match usability changes; see Aarya_changes.md for scope and evidence. Publication does not imply acceptance, merge or deployment. License selection and submission requirements still need team review.
