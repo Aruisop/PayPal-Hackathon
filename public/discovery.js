@@ -76,10 +76,10 @@
         const people = Number($('catalog-people').value || 3), base = Math.floor(offer.priceMinor / people), remainder = offer.priceMinor % people;
         body.append(node('p', `For ${people}: ${Array.from({length: people}, (_, i) => price(base + Number(i < remainder))).join(' + ')}`, 'fine'));
       }
-      const action = node('button', 'Plan this together ↗', 'btn btn-outline'); action.type = 'button';
+      const action = node('button', 'Pay together with PayPal ↗', 'btn btn-primary'); action.type = 'button';
       action.disabled = !groupFits;
       if (!groupFits) body.append(node('p', 'There are not enough adjacent seats or places for this group size. Try another session or group size.', 'fine'));
-      action.addEventListener('click', () => onPlan(offer.id)); body.append(action);
+      action.addEventListener('click', () => onPlan(offer)); body.append(action);
       card.append(image, body); container.append(card);
     });
   }

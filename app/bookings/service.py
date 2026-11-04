@@ -142,6 +142,64 @@ class CollabBooking:
                     assigned_resource_id=selected_resource_ids[index], state='PENDING_CONSENT', created_at=now))
         return self.view(participant_id, group_id)
 
+    def freeze_merchant_checkout(self, participant_id, group_id):
+        """Hold the server-selected merchant resources after its fixed roster joins.
+
+        Merchant mode intentionally bypasses preference matching, not quote,
+        inventory, consent, payment-evidence, or ownership checks.
+        """
+        with self.store.engine.begin() as connection:
+            group = member_group(connection, participant_id, group_id, organizer=True)
+            if group['checkout_mode'] != 'merchant' or not group['merchant_offer_id']:
+                raise BookingError('MERCHANT_CHECKOUT_REQUIRED', 409)
+            connection.execute(update(workshop_groups).where(workshop_groups.c.id == group_id).values(id=group_id))
+            prior = latest_purchase(connection, group_id)
+            if prior and prior['state'] not in ('CANCELLED', 'EXPIRED'):
+                raise BookingError('ROSTER_ALREADY_FROZEN')
+            members = connection.execute(select(group_memberships.c.participant_id).where(
+                group_memberships.c.group_id == group_id).order_by(
+                group_memberships.c.joined_at, group_memberships.c.id)).scalars().all()
+            if len(members) != group['target_member_count'] or not 1 <= len(members) <= 4:
+                raise BookingError('MERCHANT_ROSTER_INCOMPLETE', 409)
+            offer = connection.execute(select(catalog_offers).where(
+                catalog_offers.c.id == group['merchant_offer_id'])).mappings().first()
+            if not offer or offer['currency'] != 'USD' or datetime.fromisoformat(offer['schedule_time']).astimezone(timezone.utc) <= datetime.now(timezone.utc):
+                raise BookingError('MERCHANT_OFFER_UNAVAILABLE', 409)
+            resources = connection.execute(select(catalog_resources).where(
+                catalog_resources.c.offer_id == offer['id'], catalog_resources.c.state == 'FREE').order_by(
+                catalog_resources.c.row_label, catalog_resources.c.col_number).limit(len(members))).mappings().all()
+            if len(resources) != len(members):
+                raise BookingError('SEAT_UNAVAILABLE')
+            if offer['domain'] == 'movie':
+                columns = [resource['col_number'] for resource in resources]
+                if len({resource['row_label'] for resource in resources}) != 1 or columns[-1] - columns[0] != len(columns) - 1:
+                    raise BookingError('ADJACENT_SEATS_REQUIRED', 409)
+                total = offer['price_minor'] * len(members)
+            else:
+                total = offer['price_minor']
+            if total <= 0:
+                raise BookingError('INVALID_CATALOG_QUOTE')
+            now, purchase_id, deadline = time.time(), identifier(), time.time() + 900
+            connection.execute(insert(shared_purchases).values(id=purchase_id, group_id=group_id,
+                offer_id=offer['id'], state='AWAITING_AUTHORIZATIONS', total_cents=total, currency=offer['currency'],
+                frozen_at=now, hold_deadline=deadline, policy='all_or_nothing_refund', created_at=now))
+            connection.execute(insert(group_workflows).values(purchase_id=purchase_id, lease_until=0,
+                merchant_id=getattr(self.paypal, 'merchant_id', '') or '', cancel_requested=0,
+                review_required=0, updated_at=now))
+            profiles = dict(connection.execute(select(group_member_profiles.c.participant_id,
+                group_member_profiles.c.alias).where(group_member_profiles.c.group_id == group_id)).all())
+            shares = split_equal_cents(total, members)
+            for index, (pid, resource) in enumerate(zip(members, resources)):
+                changed = connection.execute(update(catalog_resources).where(
+                    catalog_resources.c.id == resource['id'], catalog_resources.c.state == 'FREE').values(
+                    state='HELD', held_by_purchase_id=purchase_id, held_until=deadline))
+                if changed.rowcount != 1:
+                    raise BookingError('SEAT_UNAVAILABLE')
+                connection.execute(insert(purchase_contributions).values(id=identifier(), purchase_id=purchase_id,
+                    participant_id=pid, alias=profiles.get(pid, f'Member {index + 1}'), share_cents=shares[pid],
+                    assigned_resource_id=resource['id'], state='PENDING_CONSENT', created_at=now))
+        return self.view(participant_id, group_id)
+
     def view(self, participant_id, group_id):
         with self.store.engine.connect() as connection:
             group = member_group(connection, participant_id, group_id)

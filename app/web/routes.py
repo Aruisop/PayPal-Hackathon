@@ -42,6 +42,7 @@ def room_javascript():
 
 @blueprint.get('/discovery.js')
 @blueprint.get('/guide.js')
+@blueprint.get('/merchant.js')
 def presentation_javascript():
     return _asset(request.path[1:])
 
