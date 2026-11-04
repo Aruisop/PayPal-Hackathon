@@ -53,7 +53,12 @@
   async function copyInvite() {
     const url = state.group.inviteURL;
     if (!url) throw new Error('Only the organizer can share this invite.');
-    try { await navigator.clipboard.writeText(url); detail('Invite copied. Each payer must join from a separate browser profile or device.'); }
+    try {
+      await navigator.clipboard.writeText(url);
+      const message = 'Payment invite copied — each payer joins and approves only their own exact share.';
+      detail(message);
+      root.GroupPayToast?.(message);
+    }
     catch { detail(`Copy this invite: ${url}`); }
   }
   function renderWaiting(checkout) {

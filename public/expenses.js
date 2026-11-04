@@ -43,7 +43,7 @@
     const state = {
       view: 'dashboard', groups: [], friends: [], splits: [], subscriptions: [], analytics: null,
       profile: {displayName: '', upiID: ''}, busy: false, loaded: false, error: '', notice: '',
-      activityGroup: 'ALL', modal: null, draft: null, saving: false,
+      activityGroup: 'ALL', friendQuery: '', modal: null, draft: null, saving: false,
     };
 
     function $$(selector) { return container.querySelector(selector); }
@@ -216,6 +216,7 @@
         state.notice = 'Split saved.';
         state.saving = false;
         await refreshAll();
+        root.GroupPayToast?.('Split saved — individual shares are now visible in History.');
         return;
       } catch (err) {
         state.draft.formError = err.message;
@@ -262,6 +263,7 @@
         state.modal = null; state.draft = null;
         state.notice = 'Subscription reminder saved. Nothing is charged automatically.';        state.saving = false;
         await refreshAll();
+        root.GroupPayToast?.('Recurring bill saved as a reminder. No payment was scheduled.');
         return;
       } catch (err) {
         state.draft.formError = err.message;
@@ -279,6 +281,7 @@
         if (action === 'nav') { state.view = button.dataset.view; state.notice = ''; render(); }
         else if (action === 'new-split') { openSplitModal(); }
         else if (action === 'new-subscription') { openSubscriptionModal(); }
+        else if (action === 'open-friends') { closeModal(); state.view = 'friends'; render(); }
         else if (action === 'close-modal') { closeModal(); render(); }
         else if (action === 'toggle-participant') {
           syncSplitDraftFromForm();
@@ -293,6 +296,14 @@
         else if (action === 'add-sub-participant') {
           syncSubscriptionDraftFromForm();
           state.draft.participants.push({name: '', whatsapp: ''});
+          render();
+        }
+        else if (action === 'add-sub-friend') {
+          syncSubscriptionDraftFromForm();
+          const friend = state.friends.find((item) => item.id === button.dataset.id);
+          if (friend && !state.draft.participants.some((item) => item.name.toLowerCase() === friend.name.toLowerCase())) {
+            state.draft.participants.push({name: friend.name, whatsapp: friend.whatsapp || ''});
+          }
           render();
         }
         else if (action === 'remove-sub-participant') {
@@ -348,6 +359,7 @@
           state.friends = result.friends;
           form.reset();
           render();
+          root.GroupPayToast?.(`${name} added to People.`);
         } else if (form.id === 'exp-profile-form') {
           const displayName = $$('#exp-profile-name').value.trim();
           const upiID = $$('#exp-profile-upi').value.trim();
@@ -355,6 +367,7 @@
           state.profile = result.profile;
           state.notice = 'Account details saved.';
           render();
+          root.GroupPayToast?.('Your settlement details were saved. They do not authorize payment.');
         }
       } catch (err) {
         state.error = err.message;
@@ -370,9 +383,19 @@
       await handleScan(file);
     }
 
+    function onInput(event) {
+      if (event.target.id !== 'exp-friend-search') return;
+      state.friendQuery = event.target.value;
+      const query = state.friendQuery.trim().toLowerCase();
+      for (const row of container.querySelectorAll('.exp-friend-row')) {
+        row.hidden = !!query && !row.textContent.toLowerCase().includes(query);
+      }
+    }
+
     container.addEventListener('click', onClick);
     container.addEventListener('submit', onSubmit);
     container.addEventListener('change', onFileChange);
+    container.addEventListener('input', onInput);
 
     // ----------------------------------------------------------- rendering
     function pendingForGroup(groupId) {
@@ -388,6 +411,15 @@
           <span class="exp-pending">${money(pendingForGroup(g.id))} pending</span>
         </button>`).join('');
       return `
+        <section class="exp-how-it-works" aria-labelledby="exp-how-title">
+          <div><p class="eyebrow">ONE BILL, CLEAR RESPONSIBILITIES</p><h2 id="exp-how-title">From receipt to individual shares.</h2></div>
+          <div class="exp-step-grid">
+            <button type="button" data-action="nav" data-view="friends"><b>1</b><span><strong>Add your people</strong><small>Save a name, WhatsApp number and optional settlement handle.</small></span></button>
+            <button type="button" data-action="new-split"><b>2</b><span><strong>Scan or enter a bill</strong><small>Review the total, choose friends and see every exact share before saving.</small></span></button>
+            <button type="button" data-action="nav" data-view="activity"><b>3</b><span><strong>Track settlement</strong><small>See who paid, who is pending and what happened previously.</small></span></button>
+          </div>
+          <p class="fine">This ledger records IOUs and can open WhatsApp reminders. It does not debit UPI or PayPal accounts.</p>
+        </section>
         <div class="exp-summary-row">
           <div class="exp-summary-card"><span class="fine">Tracked across all your splits</span><strong>${money(state.analytics ? state.analytics.totalMinor : 0)}</strong></div>
           <div class="exp-summary-card"><span class="fine">Still pending settlement</span><strong>${money(totalPending)}</strong></div>
@@ -445,6 +477,7 @@
       const pills = [{key: 'ALL', label: 'All'}, {key: 'none', label: 'Individual'},
         ...state.groups.filter((g) => g.id !== null).map((g) => ({key: g.id, label: g.name}))];
       return `
+        <div class="section-header"><div><h2 class="exp-subheading">Split history</h2><p class="fine">Every bill you created, its individual shares and current settlement status.</p></div></div>
         <div class="filter-row exp-filter-row">${pills.map((p) => `
           <button type="button" class="filter-pill ${state.activityGroup === p.key ? 'active' : ''}" data-action="filter-activity-group" data-group="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>`).join('')}
         </div>
@@ -452,20 +485,23 @@
     }
 
     function renderFriends() {
-      const rows = state.friends.map((f) => `
+      const query = state.friendQuery.trim().toLowerCase();
+      const matching = state.friends.filter((f) => !query || [f.name, f.upiID, f.whatsapp].some((v) => String(v || '').toLowerCase().includes(query)));
+      const rows = matching.map((f) => `
         <li class="exp-friend-row">
-          <span><strong>${escapeHtml(f.name)}</strong>${f.upiID ? ` <span class="fine">${escapeHtml(f.upiID)}</span>` : ''}${f.whatsapp ? ` <span class="fine">${escapeHtml(f.whatsapp)}</span>` : ''}</span>
+          <span class="exp-friend-person"><span class="exp-avatar">${escapeHtml((f.name.trim().charAt(0) || '?').toUpperCase())}</span><span><strong>${escapeHtml(f.name)}</strong><small>${f.whatsapp ? `WhatsApp ${escapeHtml(f.whatsapp)}` : 'No WhatsApp number'}${f.upiID ? ` · Settlement ID ${escapeHtml(f.upiID)}` : ''}</small></span></span>
           <button type="button" class="btn btn-quiet" data-action="delete-friend" data-id="${escapeHtml(f.id)}">Remove</button>
         </li>`).join('');
       return `
-        <h2 class="exp-subheading">Friends</h2>
-        <form id="exp-friend-form" class="exp-inline-form">
-          <input id="exp-friend-name" type="text" placeholder="Name" maxlength="80" required>
-          <input id="exp-friend-upi" type="text" placeholder="UPI ID (optional)" maxlength="80">
-          <input id="exp-friend-whatsapp" type="text" placeholder="WhatsApp (optional)" maxlength="40">
+        <div class="section-header"><div><h2 class="exp-subheading">People</h2><p class="fine">Your private address book for bills and reminders. These details are unverified and do not authorize a payment.</p></div></div>
+        <label class="exp-search-label" for="exp-friend-search">Search people<input id="exp-friend-search" type="search" value="${escapeHtml(state.friendQuery)}" placeholder="Search name, number or settlement ID"></label>
+        <form id="exp-friend-form" class="exp-inline-form exp-friend-form">
+          <label>Name<input id="exp-friend-name" type="text" placeholder="e.g. Aisha" maxlength="80" required></label>
+          <label>WhatsApp number<input id="exp-friend-whatsapp" type="tel" placeholder="e.g. +91 98765 43210" maxlength="40"></label>
+          <label>UPI ID / settlement handle<input id="exp-friend-upi" type="text" placeholder="Optional · unverified" maxlength="80"></label>
           <button type="submit" class="btn btn-primary">Add friend</button>
         </form>
-        <ul class="exp-friend-list">${rows || '<p class="fine">No friends saved yet.</p>'}</ul>`;
+        <ul class="exp-friend-list">${rows || `<p class="fine">${query ? 'No people match this search.' : 'No people saved yet. Add someone before creating a shared bill.'}</p>`}</ul>`;
     }
 
     function renderSubscriptions() {
@@ -479,9 +515,9 @@
           <button type="button" class="btn btn-quiet" data-action="delete-subscription" data-id="${escapeHtml(s.id)}">Remove</button>
         </div>`).join('');
       return `
-        <div class="section-header"><h2 class="exp-subheading">Subscriptions</h2>
-          <button type="button" class="btn btn-outline" data-action="new-subscription">+ Add subscription</button></div>
-        <p class="fine">Reminders only. Nothing here charges anyone automatically.</p>
+        <div class="section-header"><div><h2 class="exp-subheading">Recurring bills</h2><p class="fine">Netflix, Spotify, rent or any monthly shared cost.</p></div>
+          <button type="button" class="btn btn-outline" data-action="new-subscription">+ Add recurring bill</button></div>
+        <p class="exp-boundary-note"><strong>Reminder schedule only.</strong> The host and participants still settle manually; nothing here charges a UPI or PayPal account.</p>
         <div class="exp-sub-grid">${cards || '<p class="fine">No shared subscriptions yet.</p>'}</div>`;
     }
 
@@ -504,12 +540,12 @@
 
     function renderAccount() {
       return `
-        <h2 class="exp-subheading">Account</h2>
-        <p class="fine">Shown to people you split with here. Not your PayPal identity.</p>
+        <h2 class="exp-subheading">My settlement details</h2>
+        <p class="fine">Used to label you as the bill host and show where friends can settle manually. This is not identity verification and it never authorizes UPI or PayPal.</p>
         <form id="exp-profile-form" class="exp-form-grid">
           <label>Display name<input id="exp-profile-name" type="text" maxlength="80" value="${escapeHtml(state.profile.displayName)}"></label>
-          <label>UPI ID<input id="exp-profile-upi" type="text" maxlength="80" value="${escapeHtml(state.profile.upiID)}"></label>
-          <button type="submit" class="btn btn-primary">Save</button>
+           <label>UPI ID / settlement handle<input id="exp-profile-upi" type="text" maxlength="80" value="${escapeHtml(state.profile.upiID)}" placeholder="Optional · unverified"></label>
+           <button type="submit" class="btn btn-primary">Save my details</button>
         </form>`;
     }
 
@@ -525,7 +561,7 @@
         const totalMinor = d.total ? cents(d.total) : 0;
         if (totalMinor > 0) {
           const amounts = splitEqualCents(totalMinor, names);
-          previewLine = `${escapeHtml(you)} pays. Split equally: ${names.map((n) => `${escapeHtml(n)} ${money(amounts[n])}`).join(', ')}.`;
+          previewLine = `<div class="exp-share-preview"><strong>Who owes what</strong>${names.map((n, index) => `<span><span>${escapeHtml(n)}${index === 0 ? ' <small>(you · paid the bill)</small>' : ''}</span><b>${money(amounts[n])}</b></span>`).join('')}</div>`;
         }
       } catch { /* shown via formError on save */ }
       const scanStatus = d.scanStatus;
@@ -565,9 +601,9 @@
                 <label>Group<select id="exp-split-group"><option value="" ${!d.groupId ? 'selected' : ''}>Individual expense</option>${groupOptions}</select></label>
                 <label>Total amount (USD)<input id="exp-split-total" type="text" inputmode="decimal" value="${escapeHtml(d.total)}" placeholder="0.00"></label>
               </div>
-              <p class="exp-mini-heading">Split with</p>
-              <div class="exp-check-grid">${friendChecks || '<p class="fine">Add friends first, or save and split just with yourself.</p>'}</div>
-              ${previewLine ? `<p class="fine">${previewLine}</p>` : ''}
+               <p class="exp-mini-heading">Who shared this bill?</p>
+               <div class="exp-check-grid">${friendChecks || '<div><p class="fine">Add people first so their individual shares can be shown.</p><button type="button" class="btn btn-outline" data-action="open-friends">Add people</button></div>'}</div>
+               ${previewLine}
             </div>
             <div class="modal-actions-row">
               <button type="button" class="btn btn-outline" data-action="close-modal">Cancel</button>
@@ -585,23 +621,28 @@
           <input id="exp-sub-p-wa-${i}" type="text" placeholder="WhatsApp (optional)" value="${escapeHtml(p.whatsapp)}">
           <button type="button" class="btn btn-quiet" data-action="remove-sub-participant" data-index="${i}">Remove</button>
         </div>`).join('');
+      const availableFriends = state.friends.filter((friend) => !d.participants.some((p) => p.name.toLowerCase() === friend.name.toLowerCase()));
+      const friendButtons = availableFriends.map((friend) => `<button type="button" class="filter-pill" data-action="add-sub-friend" data-id="${escapeHtml(friend.id)}">+ ${escapeHtml(friend.name)}</button>`).join('');
+      const host = state.profile.displayName || 'You';
       return `
         <div class="modal-backdrop" id="exp-sub-modal-backdrop">
           <div class="modal-card">
             <div class="modal-header">
               <div class="split-modal-title">
                 <span class="badge badge-gold">RECURRING REMINDER</span>
-                <h2>New subscription reminder</h2>
+                <h2>New recurring bill</h2>
               </div>
               <button type="button" class="modal-close-btn" data-action="close-modal">&times;</button></div>
             <div class="modal-body">
               ${d.formError ? `<p class="exp-error">${escapeHtml(d.formError)}</p>` : ''}
-              <label>Name<input id="exp-sub-name" type="text" maxlength="80" value="${escapeHtml(d.name)}" placeholder="Shared streaming plan"></label>
+               <p class="exp-boundary-note"><strong>Host:</strong> ${escapeHtml(host)}${state.profile.upiID ? ` · settle to ${escapeHtml(state.profile.upiID)}` : ' · add a settlement handle in My details if you want it shown'}. This creates reminders, not an automatic charge.</p>
+               <label>Service or bill name<input id="exp-sub-name" type="text" maxlength="80" value="${escapeHtml(d.name)}" placeholder="Netflix, Spotify, rent…"></label>
               <div class="exp-form-row">
                 <label>Monthly amount (USD)<input id="exp-sub-amount" type="text" inputmode="decimal" value="${escapeHtml(d.monthlyAmount)}" placeholder="0.00"></label>
                 <label>Billing day<input id="exp-sub-day" type="number" min="1" max="28" value="${escapeHtml(d.billingDay)}"></label>
               </div>
               <p class="exp-mini-heading">Who shares this</p>
+               ${friendButtons ? `<div class="filter-row exp-saved-friends"><span class="fine">Add saved people:</span>${friendButtons}</div>` : ''}
               ${rows}
               <button type="button" class="btn btn-quiet" data-action="add-sub-participant">+ Add person</button>
             </div>
@@ -614,7 +655,7 @@
     }
 
     function render() {
-      const navItems = [['dashboard', 'Groups'], ['activity', 'Activity'], ['friends', 'Friends'], ['subscriptions', 'Subscriptions'], ['analytics', 'Analytics'], ['account', 'Account']];
+      const navItems = [['dashboard', 'Overview'], ['activity', 'History'], ['friends', 'People'], ['subscriptions', 'Recurring'], ['analytics', 'Insights'], ['account', 'My details']];
       const body = {
         dashboard: renderDashboard, activity: renderActivity, friends: renderFriends,
         subscriptions: renderSubscriptions, analytics: renderAnalytics, account: renderAccount,
@@ -623,11 +664,11 @@
         <div class="exp-wrap">
           <div class="section-header page-intro">
             <div>
-              <p class="eyebrow">YOUR OWN LEDGER</p>
-              <h1>Split the bill.<br>Settle it your way.</h1>
-              <p>Informal notes between you and your people. Nothing here touches PayPal, tickets or inventory.</p>
+               <p class="eyebrow">BILLS &amp; SHARED EXPENSES</p>
+               <h1>Scan it. Split it.<br>Know who owes what.</h1>
+               <p>Add people, scan or enter a bill, review exact individual shares, and track settlement history.</p>
             </div>
-            <span class="badge badge-gold">LOCAL &amp; INFORMAL &mdash; NOT PAYPAL PAYMENT</span>
+             <span class="badge badge-gold">LEDGER &amp; REMINDERS &mdash; NO AUTOMATIC CHARGE</span>
           </div>
           <div class="exp-toolbar">
             <div class="filter-row">${navItems.map(([key, label]) => `<button type="button" class="filter-pill ${state.view === key ? 'active' : ''}" data-action="nav" data-view="${key}">${label}</button>`).join('')}</div>

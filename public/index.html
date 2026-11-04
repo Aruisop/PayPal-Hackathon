@@ -30,8 +30,8 @@
         <a id="tab-discover" href="/" class="tab-btn active" aria-current="page"><span class="nav-icon">&#9672;</span> Discover <span class="nav-arrow">&#8599;</span></a>
         <button id="tab-groups" type="button" class="tab-btn"><span class="nav-icon">&#9707;</span> My groups <span id="my-groups-count" class="nav-count">0</span></button>
         <button id="tab-collab" type="button" class="tab-btn"><span class="nav-icon">&#9678;</span> Group room <i id="active-group-dot" style="display:none"></i></button>
-        <button id="tab-workshop" type="button" class="tab-btn"><span class="nav-icon">&#9636;</span> Workshops</button>
-        <button id="tab-expenses" type="button" class="tab-btn"><span class="nav-icon">&#8942;</span> Splits</button>
+        <button id="tab-workshop" type="button" class="tab-btn" title="Standalone PayPal capture and lesson-unlock demo"><span class="nav-icon">&#9636;</span> Workshop demo</button>
+        <button id="tab-expenses" type="button" class="tab-btn"><span class="nav-icon">&#8942;</span> Bills &amp; splits</button>
       </nav>
       <div class="rail-divider">
       </div>
@@ -182,7 +182,7 @@
           <div class="room-roster-ctrl"><span id="room-roster-count" class="fine"></span>
             <div id="room-roster-avatars" class="roster-avatar-row">
             </div>
-            <button id="copy-invite-btn" class="btn btn-outline" type="button">Copy invite &#8599;</button><button id="btn-add-friend-demo" class="text-button" type="button">Testing solo?</button>
+            <button id="copy-invite-btn" class="btn btn-outline" type="button">Copy invite link</button><button id="btn-add-friend-demo" class="text-button" type="button">Testing solo?</button>
           </div>
         </div>
         <ol class="room-journey" aria-label="Booking progress">
@@ -295,7 +295,8 @@
                   <p class="eyebrow">A PLAN WITH EVERYONE IN MIND</p>
                   <h3 id="room-ai-title">A little help finding common ground.</h3>
                   <p>We check everyone's confirmed limits first. Local AI then compares the experiences that fit, using the meaning of your confirmed likes.</p>
-                  <label for="room-ai-objective">What should lead the comparison?<select id="room-ai-objective"><option value="compromise">A balanced compromise</option><option value="average">Best average modeled fit</option><option value="compare">Compare both approaches</option></select></label>
+                  <label for="room-ai-objective">How should we rank the plans?<select id="room-ai-objective"><option value="compromise">Keep it fair for everyone (recommended)</option><option value="average">Choose the strongest overall fit</option><option value="compare">Show both rankings side by side</option></select></label>
+                  <p id="room-ai-objective-hint" class="objective-hint">Protects the person making the biggest compromise, after budgets, dates, capacity and availability have already been checked.</p>
                   <details class="comparison-explanation"><summary>What does the AI actually do?</summary><p>The balanced option minimizes the largest modeled loss relative to each person's best eligible choice. Average fit uses mean semantic similarity. These scores do not measure happiness or agreement. Private likes stay on this server; peer text and individual scores are not shared. People choose, reserve and approve for themselves.</p></details>
                   <button id="room-ai-recommend" class="btn btn-primary" type="button">Compare AI suggestions</button>
                   <p id="room-ai-ranking-note" class="fine" role="status" aria-live="polite"></p>
@@ -684,5 +685,6 @@
         </div>
       </section>
     </div>
+    <div id="app-toast" class="app-toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
   </body>
 </html>

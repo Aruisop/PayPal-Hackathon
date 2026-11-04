@@ -8,12 +8,12 @@ Read [Aarya_changes.md](Aarya_changes.md) for changes and evidence, the [adversa
 
 ## Run on this workspace
 
-The existing virtual environment is in the parent folder. From `ppl-hxn`:
+From this repository root, use the existing virtual environment:
 
 ```powershell
-..\.venv\Scripts\python.exe -m pip install -r requirements.txt
-..\.venv\Scripts\python.exe -B -m app migrate
-..\.venv\Scripts\python.exe -B -m app serve
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -B -m app migrate
+.\.venv\Scripts\python.exe -B -m app serve
 ```
 
 Open **http://localhost:8000** and use **Ctrl+F5** after an update. Preserve the existing `.env`. For a fresh clone, create a virtual environment, copy `.env.example` only when `.env` does not exist, and install the pinned requirements.

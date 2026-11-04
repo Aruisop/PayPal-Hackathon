@@ -108,6 +108,42 @@ const SOUNDS = {
 let labDemo = null;
 let expensesMounted = false;
 let expensesHandle = null;
+let expensesLoading = false;
+let toastTimer = null;
+
+function showToast(message, tone = 'success') {
+  const toast = $('app-toast');
+  if (!toast) return;
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = `app-toast app-toast-${tone}`;
+  toast.hidden = false;
+  requestAnimationFrame(() => toast.classList.add('is-visible'));
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('is-visible');
+    setTimeout(() => { toast.hidden = true; }, 180);
+  }, 3200);
+}
+window.GroupPayToast = showToast;
+
+function loadExpensesModule() {
+  if (expensesLoading) return;
+  expensesLoading = true;
+  const root = $('expenses-root');
+  if (root) root.replaceChildren(Object.assign(document.createElement('p'), {className: 'fine', textContent: 'Loading Bills & Splits…'}));
+  const script = document.createElement('script');
+  script.src = `/expenses.js?retry=${Date.now()}`;
+  script.onload = () => {
+    expensesLoading = false;
+    expensesMounted = false;
+    if (currentTab === 'expenses') switchTab('expenses');
+  };
+  script.onerror = () => {
+    expensesLoading = false;
+    if (root) root.replaceChildren(Object.assign(document.createElement('p'), {className: 'exp-error', textContent: 'Bills & Splits could not load. Check the connection, then refresh.'}));
+  };
+  document.head.append(script);
+}
 const DAG_NODE_INFO = {
   1: {title: 'Gather the group', badge: 'MEMBERSHIP', desc: 'Invites join a group. Each real participant keeps a separate browser session.', meta: 'Group API | Membership checks | Persistent roster'},
   2: {title: 'Confirm preferences', badge: 'PRIVATE REVIEW', desc: 'Members review their own structured preferences. A model or local parser cannot confirm for them.', meta: 'Planning API | Explicit confirmation | Private preferences'},
@@ -195,7 +231,7 @@ function setupTabs() {
 
 function switchTab(tab) {
   currentTab = tab;
-  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', merchant: 'Merchant checkout', lab: 'Solo demo lab', workshop: 'Workshops', expenses: 'Splits'}[tab] || 'Discover';
+  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', merchant: 'Merchant checkout', lab: 'Solo demo lab', workshop: 'Workshop checkout demo', expenses: 'Bills & splits'}[tab] || 'Discover';
   SOUNDS.click();
 
   const tabs = ['discover', 'groups', 'collab', 'merchant', 'lab', 'workshop', 'expenses'];
@@ -234,11 +270,19 @@ function switchTab(tab) {
     renderStatus();
     renderCheckout();
   } else if (tab === 'expenses') {
-    if (!expensesMounted) {
-      expensesMounted = true;
-      expensesHandle = window.GroupPayExpenses.mount($('expenses-root'), {api, escapeHtml, getCsrfToken: () => config?.csrfToken || ''});
-    } else if (expensesHandle && typeof expensesHandle.refresh === 'function') {
-      expensesHandle.refresh();
+    try {
+      if (!window.GroupPayExpenses?.mount) { loadExpensesModule(); return; }
+      if (!expensesMounted) {
+        expensesMounted = true;
+        expensesHandle = window.GroupPayExpenses.mount($('expenses-root'), {api, escapeHtml, getCsrfToken: () => config?.csrfToken || ''});
+      } else if (expensesHandle && typeof expensesHandle.refresh === 'function') {
+        expensesHandle.refresh();
+      }
+    } catch (error) {
+      expensesMounted = false;
+      expensesHandle = null;
+      const root = $('expenses-root');
+      if (root) root.replaceChildren(Object.assign(document.createElement('p'), {className: 'exp-error', textContent: error.message || 'Bills & Splits could not load.'}));
     }
   }
 }
@@ -347,10 +391,10 @@ function renderMyGroups() {
     btn.addEventListener('click', () => {
       SOUNDS.click();
       const url = btn.dataset.url || window.location.origin;
-      if (!navigator.clipboard) { alert(`Invite link: ${url}`); return; }
+      if (!navigator.clipboard) { showToast('Clipboard is unavailable. Copy the visible invite link manually.', 'warning'); return; }
       navigator.clipboard.writeText(url).then(() => {
-        alert('Group invite link copied to clipboard!');
-      }).catch(() => alert(`Invite link: ${url}`));
+        showToast('Invite copied — send it to each friend. Everyone joins from their own browser profile or device.');
+      }).catch(() => showToast('Could not copy automatically. Copy the visible invite link manually.', 'warning'));
     });
   });
 }

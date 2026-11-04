@@ -95,6 +95,14 @@
     $('room-show-preferences').setAttribute('aria-pressed', String(!comparing));
     $('room-show-comparison').setAttribute('aria-pressed', String(comparing));
   }
+  function renderObjectiveHint() {
+    const hints = {
+      compromise: 'Protects the person making the biggest compromise, after budgets, dates, capacity and availability have already been checked.',
+      average: 'Ranks by the group’s average modeled fit. One person may compromise more, so review each trade-off before choosing.',
+      compare: 'Shows the fair-for-everyone and strongest-overall rankings together. Your group still makes the final choice.',
+    };
+    $('room-ai-objective-hint').textContent = hints[$('room-ai-objective').value] || hints.compromise;
+  }
   function renderBrief() {
     const plan = state.plan, mode = plan?.recommendation?.mode;
     const labels = {semantic: 'Local AI comparison', needs_tastes: 'Verified rules · add likes for AI',
@@ -632,12 +640,14 @@
       if (state.edited || !state.preference?.isConfirmed) reviewForAI(); else run(compareSuggestions);
     });
     $('room-ai-objective').addEventListener('change', () => {
+      renderObjectiveHint();
       state.plan = null;
       state.offer = state.quote = null; state.seats = [];
       $('room-plan-results').replaceChildren(); $('room-ai-ranking-note').textContent = '';
       $('room-ai-actions').replaceChildren();
       renderSeats(); renderControls();
     });
+    renderObjectiveHint();
     $('room-rescue').addEventListener('click', () => run(rescue));
     $('room-preference-review').addEventListener('input', () => {
       state.plan = null; plannerView('preferences');
@@ -689,7 +699,12 @@
     $('room-refresh').addEventListener('click', () => run(refresh));
     $('room-consent').addEventListener('change', () => renderPayPal().catch((error) => status(error.message, true)));
     $('copy-invite-btn').addEventListener('click', () => run(async () => {
-      try { await navigator.clipboard.writeText(state.group.inviteURL); status('Invite copied. Each participant needs a separate browser profile or device.'); }
+      try {
+        await navigator.clipboard.writeText(state.group.inviteURL);
+        const message = 'Invite copied — send it to your friends. Each person joins from their own browser profile or device.';
+        status(message);
+        root.GroupPayToast?.(message);
+      }
       catch { $('room-invite-link').value = state.group.inviteURL; $('room-invite-link').hidden = false; $('room-invite-link').select(); status('Copy the selected invite manually.'); }
     }));
     document.querySelectorAll('.chip-preset').forEach((chip) => chip.addEventListener('click', () => { $('chat-input-text').value = chip.dataset.text; $('chat-input-text').focus(); }));
