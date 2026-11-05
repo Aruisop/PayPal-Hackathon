@@ -12,6 +12,7 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 | app/expenses/ocr.py, app/expenses/vision_assets.py | Unsaved receipt preview from explicit local Hugging Face vision weights; no split or payment authority |
 | evaluation/ | Frozen synthetic fixtures, benchmark runner, actual inference/route timing and honest reproducible metrics |
 | public/demo.js | Independent in-memory fictional three-person model, readiness, sequential capture, pending compensation, local tickets and duplicate admission rejection |
+| public/expenses.js, app/expenses/ | Owner-private informal friend, split and subscription ledger; optional local receipt preview; no payment authority |
 | app/factory.py, app/*/routes.py | Flask factory, session/Origin/CSRF/ownership boundary, and thin feature Blueprints |
 | app/shared/storage.py | SQLAlchemy Core schema, immutable migration sequence, trusted catalog and participant identities |
 | app/groups/ | Membership/invites/privacy, room messages and coarse coordination |
@@ -25,6 +26,8 @@ Start with the README, Aarya_changes.md, AGENTS.md and current Slice 3 review. B
 Keep price, currency, roster, merchant validation and inventory server-owned. Confirm every member's own preferences before matching. Only all required validated completed captures unlock private tickets. Persist request IDs and known provider IDs; reconcile unknown outcomes before retrying. Never hold a transaction over a provider call. Fence writes and keep failed refunds/voids visible. GET polling is read-only.
 
 Migrations 4 and 5 extend revision 3 without rewriting original schemas. Revision 6 additively stores merchant-checkout mode, its trusted offer and fixed roster size; it does not alter historical purchases or provider evidence. Legacy purchase evidence is preserved and quarantined for merchant review. Never reset storage or substitute the prior application's database. Local SQLite is not hosting; managed PostgreSQL runtime/concurrency still needs verification.
+
+Published revision 6 adds merchant checkout columns and revision 7 adds the informal ledger; revision 8 adds contact and receiving-handle snapshots without altering applied revisions. New shares with friend IDs must resolve to contacts owned by the same browser participant. Historical name-only shares stay readable. A contact or phone number is not group membership or payment authorization. The local teaching lab compares fictional budgets and words; the saved group uses verified constraints and server-local BGE.
 
 The real room uses one participant per browser profile. Aliases cannot switch identity. Shared discussion is distinct from private preferences, and explicit sharing consent governs aliases/coarse progress. Cookie identities have no account recovery.
 

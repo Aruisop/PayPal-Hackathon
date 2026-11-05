@@ -103,6 +103,13 @@ class LocalEncoder:
             prefix = self.profile['query_prefix'] if self.query_instruction else ''
             return self._encode([prefix + text for text in texts])
 
+    def encode_documents(self, texts, maximum=64):
+        """Embed trusted passages without the BGE query instruction, without caching."""
+        self._validate_texts(texts, maximum)
+        with self._lock:
+            self._load()
+            return self._encode(list(texts))
+
     def _encode(self, texts):
         started = time.perf_counter()
         try:

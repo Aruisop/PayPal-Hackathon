@@ -90,15 +90,14 @@
       } catch { return false; }
     }
 
-    function friendWhatsappDigits(name) {
-      const friend = state.friends.find((f) => f.name.toLowerCase() === name.toLowerCase());
-      const digits = friend && friend.whatsapp ? friend.whatsapp.replace(/[^\d]/g, '') : '';
+    function friendWhatsappDigits(share) {
+      const digits = (share.whatsapp || '').replace(/[^\d]/g, '');
       return digits.length >= 8 ? digits : '';
     }
 
     async function remindShare(split, share) {
       const message = 'Hi ' + share.name + '! Quick reminder \u2014 you owe ' + money(share.amountMinor, split.currency) + ' for "' + split.title + '" from our GroupPay split. Thanks!';
-      const digits = friendWhatsappDigits(share.name);
+      const digits = friendWhatsappDigits(share);
       if (digits) {
         window.open('https://wa.me/' + digits + '?text=' + encodeURIComponent(message), '_blank', 'noopener,noreferrer');
         state.notice = 'Opened WhatsApp to remind ' + share.name + '.';
@@ -125,6 +124,7 @@
       state.notice = '';
       state.draft = {
         title: '', category: 'food', currency: 'USD', groupId: '',
+        hostName: state.profile.displayName || '', upiID: state.profile.upiID || '', paypalEmail: '',
         total: '', selected: [], scanBusy: false, scanError: '', scanInfo: '', receiptMeta: null, formError: '',
         scanStatus: null, scanPreviewUrl: '',
       };
@@ -138,11 +138,14 @@
       const total = $$('#exp-split-total'); if (total) state.draft.total = total.value;
       const group = $$('#exp-split-group'); if (group) state.draft.groupId = group.value;
       const category = $$('#exp-split-category'); if (category) state.draft.category = category.value;
+      const host = $$('#exp-split-host'); if (host) state.draft.hostName = host.value;
+      const upi = $$('#exp-split-upi'); if (upi) state.draft.upiID = upi.value;
+      const paypal = $$('#exp-split-paypal'); if (paypal) state.draft.paypalEmail = paypal.value;
     }
 
     function participantNames() {
       const you = state.profile.displayName || 'You';
-      return [you, ...state.draft.selected];
+      return [you, ...state.draft.selected.map((id) => state.friends.find((friend) => friend.id === id)?.name).filter(Boolean)];
     }
 
     // Object URLs for the local receipt preview are revoked whenever the draft is replaced or closed.
@@ -204,12 +207,15 @@
       if (uniqueNames.size !== names.length) { state.draft.formError = 'Each person in a split needs a distinct name.'; render(); return; }
       const amounts = splitEqualCents(totalMinor, names);
       const payer = names[0];
-      const shares = names.map((name) => ({name, amountMinor: amounts[name], isPayer: name === payer}));
+      if (names.length !== state.draft.selected.length + 1) { state.draft.formError = 'A selected friend changed. Reopen the split and choose again.'; render(); return; }
+      const shares = names.map((name, index) => ({name, amountMinor: amounts[name], isPayer: name === payer,
+        ...(index ? {friendID: state.draft.selected[index - 1]} : {})}));
       state.saving = true; render();
       try {
         await api('/api/expenses/splits', {
           title: state.draft.title.trim(), category: state.draft.category, currency: state.draft.currency,
           shares, groupID: state.draft.groupId || null,
+          payee: {hostName: state.draft.hostName.trim(), upiID: state.draft.upiID.trim(), paypalEmail: state.draft.paypalEmail.trim()},
           source: state.draft.receiptMeta ? 'scan' : 'manual', receiptMeta: state.draft.receiptMeta,
         });
         closeModal();
@@ -228,7 +234,8 @@
     // ----------------------------------------------------------- subscription draft
     function openSubscriptionModal() {
       state.modal = 'subscription';
-      state.draft = {name: '', monthlyAmount: '', billingDay: '1', participants: [], formError: ''};
+      state.draft = {name: '', monthlyAmount: '', billingDay: '1',
+        hostName: state.profile.displayName || '', upiID: state.profile.upiID || '', participants: [], formError: ''};
       render();
     }
 
@@ -237,6 +244,8 @@
       const name = $$('#exp-sub-name'); if (name) state.draft.name = name.value;
       const amount = $$('#exp-sub-amount'); if (amount) state.draft.monthlyAmount = amount.value;
       const day = $$('#exp-sub-day'); if (day) state.draft.billingDay = day.value;
+      const host = $$('#exp-sub-host'); if (host) state.draft.hostName = host.value;
+      const upi = $$('#exp-sub-upi'); if (upi) state.draft.upiID = upi.value;
       state.draft.participants.forEach((p, i) => {
         const nameField = $$(`#exp-sub-p-name-${i}`); if (nameField) p.name = nameField.value;
         const waField = $$(`#exp-sub-p-wa-${i}`); if (waField) p.whatsapp = waField.value;
@@ -259,6 +268,7 @@
       try {
         await api('/api/expenses/subscriptions', {
           name: state.draft.name.trim(), monthlyAmountMinor: monthlyMinor, billingDay, currency: 'USD', participants,
+          hostName: state.draft.hostName.trim(), upiID: state.draft.upiID.trim(),
         });
         state.modal = null; state.draft = null;
         state.notice = 'Subscription reminder saved. Nothing is charged automatically.';        state.saving = false;
@@ -282,12 +292,24 @@
         else if (action === 'new-split') { openSplitModal(); }
         else if (action === 'new-subscription') { openSubscriptionModal(); }
         else if (action === 'open-friends') { closeModal(); state.view = 'friends'; render(); }
+        else if (action === 'new-sub-cycle') {
+          const sub = state.subscriptions.find((item) => item.id === button.dataset.id);
+          if (!sub) return;
+          openSplitModal();
+          state.draft.title = `${sub.name} · monthly bill`;
+          state.draft.category = 'entertainment';
+          state.draft.total = (sub.monthlyAmountMinor / 100).toFixed(2);
+          state.draft.hostName = sub.hostName || state.profile.displayName || '';
+          state.draft.upiID = sub.upiID || state.profile.upiID || '';
+          state.draft.formError = 'Select the saved friends who share this month. Subscription names are reminders, not verified contact links.';
+          render();
+        }
         else if (action === 'close-modal') { closeModal(); render(); }
         else if (action === 'toggle-participant') {
           syncSplitDraftFromForm();
-          const name = button.dataset.name;
-          const i = state.draft.selected.indexOf(name);
-          if (i >= 0) state.draft.selected.splice(i, 1); else state.draft.selected.push(name);
+          const friendID = button.dataset.id;
+          const i = state.draft.selected.indexOf(friendID);
+          if (i >= 0) state.draft.selected.splice(i, 1); else state.draft.selected.push(friendID);
           render();
         }
         else if (action === 'trigger-scan') { $$('#exp-scan-input')?.click(); }
@@ -437,8 +459,8 @@
         <li class="exp-share-row ${share.settled ? 'exp-settled' : ''}">
           <span class="exp-share-who">
             <span class="exp-avatar">${initial}</span>
-            <span>${escapeHtml(share.name)}</span>
-            ${share.isPayer ? '<span class="badge">paid</span>' : ''}
+            <span>${escapeHtml(share.name)}${share.upiID ? ` <small class="fine">${escapeHtml(share.upiID)}</small>` : ''}</span>
+            ${share.isPayer ? '<span class="badge">payer · manual record</span>' : ''}
           </span>
           <span class="exp-share-amount">${money(share.amountMinor, split.currency)}</span>
           <span class="exp-share-actions">
@@ -468,12 +490,14 @@
             </div>
           </div>
           <ul class="exp-share-list">${split.shares.map((s) => renderShareRow(split, s)).join('')}</ul>
+          ${(split.payee?.upiID || split.payee?.paypalEmail) ? `<p class="fine">${escapeHtml(split.payee.hostName || 'Payer')} can receive a manual repayment at ${escapeHtml([split.payee.upiID, split.payee.paypalEmail].filter(Boolean).join(' or '))}. These handles are unverified; marking settled is manual.</p>` : ''}
         </div>`;
     }
 
     function renderActivity() {
       const filtered = state.activityGroup === 'ALL' ? state.splits
         : state.splits.filter((s) => (state.activityGroup === 'none' ? s.groupID === null : s.groupID === state.activityGroup));
+      const active = filtered.filter((split) => !split.allSettled);
       const pills = [{key: 'ALL', label: 'All'}, {key: 'none', label: 'Individual'},
         ...state.groups.filter((g) => g.id !== null).map((g) => ({key: g.id, label: g.name}))];
       return `
@@ -481,7 +505,14 @@
         <div class="filter-row exp-filter-row">${pills.map((p) => `
           <button type="button" class="filter-pill ${state.activityGroup === p.key ? 'active' : ''}" data-action="filter-activity-group" data-group="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>`).join('')}
         </div>
-        <div class="exp-split-list">${filtered.length ? filtered.map(renderSplitCard).join('') : '<p class="fine">No splits yet here. Use + New split to log one.</p>'}</div>`;
+        <p class="fine">Open repayments and reminders. Completed splits remain in History.</p>
+        <div class="exp-split-list">${active.length ? active.map(renderSplitCard).join('') : '<p class="fine">No open splits here. Check History for completed records.</p>'}</div>`;
+    }
+
+    function renderHistory() {
+      return `<h2 class="exp-subheading">Split history</h2>
+        <p class="fine">All your saved splits, newest first. Settled means you marked the repayment complete; it is not PayPal evidence.</p>
+        <div class="exp-split-list">${state.splits.length ? state.splits.map(renderSplitCard).join('') : '<p class="fine">No split history yet.</p>'}</div>`;
     }
 
     function renderFriends() {
@@ -493,7 +524,7 @@
           <button type="button" class="btn btn-quiet" data-action="delete-friend" data-id="${escapeHtml(f.id)}">Remove</button>
         </li>`).join('');
       return `
-        <div class="section-header"><div><h2 class="exp-subheading">People</h2><p class="fine">Your private address book for bills and reminders. These details are unverified and do not authorize a payment.</p></div></div>
+        <div class="section-header"><div><h2 class="exp-subheading">People</h2><p class="fine">Your private address book for bills and reminders. These details are unverified and do not authorize a payment. A saved contact joins a booking room only after accepting its invite in their own browser profile.</p></div></div>
         <label class="exp-search-label" for="exp-friend-search">Search people<input id="exp-friend-search" type="search" value="${escapeHtml(state.friendQuery)}" placeholder="Search name, number or settlement ID"></label>
         <form id="exp-friend-form" class="exp-inline-form exp-friend-form">
           <label>Name<input id="exp-friend-name" type="text" placeholder="e.g. Aisha" maxlength="80" required></label>
@@ -510,9 +541,12 @@
           <div>
             <strong>${escapeHtml(s.name)}</strong>
             <span class="fine">${money(s.monthlyAmountMinor, s.currency)} / month &middot; billed on day ${s.billingDay}</span>
+            <span class="fine">Host: ${escapeHtml(s.hostName || 'You')}${s.upiID ? ` · UPI: ${escapeHtml(s.upiID)}` : ''}</span>
             <span class="fine">${s.participants.map((p) => escapeHtml(p.name)).join(', ') || 'Just you'}</span>
+            <span class="fine">Example equal share: ${money(Math.floor(s.monthlyAmountMinor / (s.participants.length + 1)), s.currency)} each, with remainder cents assigned in order. Create a new split on each billing cycle to track actual repayment.</span>
           </div>
-          <button type="button" class="btn btn-quiet" data-action="delete-subscription" data-id="${escapeHtml(s.id)}">Remove</button>
+          <div><button type="button" class="btn btn-outline" data-action="new-sub-cycle" data-id="${escapeHtml(s.id)}">Log this month’s split</button>
+          <button type="button" class="btn btn-quiet" data-action="delete-subscription" data-id="${escapeHtml(s.id)}">Remove</button></div>
         </div>`).join('');
       return `
         <div class="section-header"><div><h2 class="exp-subheading">Recurring bills</h2><p class="fine">Netflix, Spotify, rent or any monthly shared cost.</p></div>
@@ -553,9 +587,9 @@
       const d = state.draft;
       const groupOptions = state.groups.filter((g) => g.id !== null).map((g) => `<option value="${escapeHtml(g.id)}" ${d.groupId === g.id ? 'selected' : ''}>${escapeHtml(g.name)}</option>`).join('');
       const friendChecks = state.friends.map((f) => `
-        <label class="exp-check"><input type="checkbox" data-action="toggle-participant" data-name="${escapeHtml(f.name)}" ${d.selected.includes(f.name) ? 'checked' : ''}><span class="exp-avatar">${escapeHtml((f.name.trim().charAt(0) || '?').toUpperCase())}</span>${escapeHtml(f.name)}</label>`).join('');
+        <label class="exp-check"><input type="checkbox" data-action="toggle-participant" data-id="${escapeHtml(f.id)}" ${d.selected.includes(f.id) ? 'checked' : ''}><span class="exp-avatar">${escapeHtml((f.name.trim().charAt(0) || '?').toUpperCase())}</span>${escapeHtml(f.name)}${f.whatsapp ? ` <small>${escapeHtml(f.whatsapp)}</small>` : ''}</label>`).join('');
       const you = state.profile.displayName || 'You';
-      const names = [you, ...d.selected];
+      const names = participantNames();
       let previewLine = '';
       try {
         const totalMinor = d.total ? cents(d.total) : 0;
@@ -603,6 +637,10 @@
               </div>
                <p class="exp-mini-heading">Who shared this bill?</p>
                <div class="exp-check-grid">${friendChecks || '<div><p class="fine">Add people first so their individual shares can be shown.</p><button type="button" class="btn btn-outline" data-action="open-friends">Add people</button></div>'}</div>
+              <p class="exp-mini-heading">Receiving details for manual repayment</p>
+              <div class="exp-form-row"><label>Host name<input id="exp-split-host" value="${escapeHtml(d.hostName)}" maxlength="80"></label><label>UPI ID (optional)<input id="exp-split-upi" value="${escapeHtml(d.upiID)}" maxlength="80"></label></div>
+              <label>PayPal email (optional, not a login)<input id="exp-split-paypal" type="email" value="${escapeHtml(d.paypalEmail)}" maxlength="160"></label>
+              <p class="fine">These are unverified receiving handles. This ledger does not request or confirm a payment; buyers enter credentials only in PayPal.</p>
                ${previewLine}
             </div>
             <div class="modal-actions-row">
@@ -641,6 +679,7 @@
                 <label>Monthly amount (USD)<input id="exp-sub-amount" type="text" inputmode="decimal" value="${escapeHtml(d.monthlyAmount)}" placeholder="0.00"></label>
                 <label>Billing day<input id="exp-sub-day" type="number" min="1" max="28" value="${escapeHtml(d.billingDay)}"></label>
               </div>
+              <div class="exp-form-row"><label>Host name<input id="exp-sub-host" value="${escapeHtml(d.hostName)}" maxlength="80"></label><label>Host UPI ID (optional)<input id="exp-sub-upi" value="${escapeHtml(d.upiID)}" maxlength="80"></label></div>
               <p class="exp-mini-heading">Who shares this</p>
                ${friendButtons ? `<div class="filter-row exp-saved-friends"><span class="fine">Add saved people:</span>${friendButtons}</div>` : ''}
               ${rows}
@@ -655,9 +694,9 @@
     }
 
     function render() {
-      const navItems = [['dashboard', 'Overview'], ['activity', 'History'], ['friends', 'People'], ['subscriptions', 'Recurring'], ['analytics', 'Insights'], ['account', 'My details']];
+      const navItems = [['dashboard', 'Overview'], ['activity', 'Activity'], ['history', 'History'], ['friends', 'People'], ['subscriptions', 'Recurring'], ['analytics', 'Insights'], ['account', 'My details']];
       const body = {
-        dashboard: renderDashboard, activity: renderActivity, friends: renderFriends,
+        dashboard: renderDashboard, activity: renderActivity, history: renderHistory, friends: renderFriends,
         subscriptions: renderSubscriptions, analytics: renderAnalytics, account: renderAccount,
       }[state.view]();
       container.innerHTML = `

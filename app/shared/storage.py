@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import (Column, Float, ForeignKey, Integer, MetaData, String, Table,
-                        UniqueConstraint, create_engine, event, insert, select)
+                        UniqueConstraint, create_engine, event, insert, select, update)
 
 metadata = MetaData()
 versions = Table('schema_versions', metadata, Column('id', Integer, primary_key=True),
@@ -245,6 +245,25 @@ expense_subscription_participants = Table('expense_subscription_participants', m
     Column('name', String(80), nullable=False),
     Column('whatsapp', String(40), nullable=False, default=''))
 
+# Revision 7: contact snapshots for new ledger shares. Historical name-only
+# shares stay untouched; a deleted contact cannot silently redirect a reminder.
+expense_share_contacts = Table('expense_share_contacts', metadata,
+    Column('share_id', ForeignKey('expense_shares.id'), primary_key=True),
+    Column('friend_id', String(40), nullable=False),
+    Column('whatsapp', String(40), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''))
+
+expense_split_payees = Table('expense_split_payees', metadata,
+    Column('split_id', ForeignKey('expense_splits.id'), primary_key=True),
+    Column('host_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('paypal_email', String(160), nullable=False, default=''))
+
+expense_subscription_details = Table('expense_subscription_details', metadata,
+    Column('subscription_id', ForeignKey('expense_subscriptions.id'), primary_key=True),
+    Column('host_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''))
+
 
 def identifier():
     return secrets.token_hex(16)
@@ -296,8 +315,8 @@ class Store:
     def migrate(self, target=2):
         # Target defaults to 2 to preserve Slice 2 backward compatibility contract.
         from sqlalchemy import inspect
-        if target not in (2, 3, 4, 5, 6, 7):
-            raise ValueError('Supported migration targets are 2 through 7')
+        if target not in (2, 3, 4, 5, 6, 7, 8):
+            raise ValueError('Supported migration targets are 2 through 8')
         if 'schema_versions' in inspect(self.engine).get_table_names():
             with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
@@ -363,7 +382,22 @@ class Store:
                     expense_subscription_participants.create(connection, checkfirst=True)
                     revision = 7
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=7))
-                if revision not in (2, 3, 4, 5, 6, 7):
+                if revision == 7 and target >= 8:
+                    # A local expense-only revision 7 also existed before
+                    # integration. Complete the merchant columns if absent.
+                    columns = {column['name'] for column in inspect(connection).get_columns('workshop_groups')}
+                    if 'checkout_mode' not in columns:
+                        connection.exec_driver_sql("ALTER TABLE workshop_groups ADD COLUMN checkout_mode VARCHAR(20) NOT NULL DEFAULT 'planning'")
+                    if 'target_member_count' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN target_member_count INTEGER')
+                    if 'merchant_offer_id' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN merchant_offer_id VARCHAR(64)')
+                    expense_share_contacts.create(connection, checkfirst=True)
+                    expense_split_payees.create(connection, checkfirst=True)
+                    expense_subscription_details.create(connection, checkfirst=True)
+                    revision = 8
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=8))
+                if revision not in (2, 3, 4, 5, 6, 7, 8):
                     raise RuntimeError('Unsupported database revision; run the documented migration')
             return
         tables = [versions, participants, workshops, bookings, attempts, entitlements,
@@ -378,6 +412,8 @@ class Store:
         if target >= 7:
             tables += [expense_profiles, expense_friends, expense_splits, expense_shares,
                        expense_subscriptions, expense_subscription_participants]
+        if target >= 8:
+            tables += [expense_share_contacts, expense_split_payees, expense_subscription_details]
         metadata.create_all(self.engine, tables=tables)
         with self.engine.begin() as connection:
             connection.execute(insert(versions).values(id=1, revision=target))
@@ -406,6 +442,18 @@ class Store:
             # Seed collaborative booking catalog if table exists and is empty
             # Check before selecting: catching a missing-table error leaves a
             # PostgreSQL transaction aborted, even when Python catches it.
+            if inspect(connection).has_table('catalog_offers'):
+                # Development convenience (seed() never runs in production): a database older than its
+                # sample sessions would show an empty catalog, so roll fully elapsed sessions forward by whole
+                # weeks. Weekday and time are preserved; resources, prices and merchants are untouched.
+                now = datetime.now(timezone.utc)
+                stored = connection.execute(select(catalog_offers.c.id, catalog_offers.c.schedule_time)).all()
+                parsed = [(oid, datetime.fromisoformat(stamp.replace('Z', '+00:00'))) for oid, stamp in stored]
+                if parsed and all(moment <= now for _, moment in parsed):
+                    for oid, moment in parsed:
+                        weeks = (now - moment).days // 7 + 1
+                        connection.execute(update(catalog_offers).where(catalog_offers.c.id == oid).values(
+                            schedule_time=(moment + timedelta(weeks=weeks)).isoformat()))
             has_offers = (not inspect(connection).has_table('catalog_offers') or
                           bool(connection.execute(select(catalog_offers.c.id).limit(1)).first()))
             if not has_offers:

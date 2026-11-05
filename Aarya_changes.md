@@ -1,5 +1,13 @@
 # Aarya changes: guided UI improvements and integration review
 
+## 5 November 2026: guided journey and stable split contacts on `dev/aarya`
+
+Integrated the `dev/pan` clarity pass with the newer merchant-checkout and Qwen receipt-vision work already on `dev/aarya`. The home page explains invite → confirmed preferences → group comparison → selection → individual PayPal authorization → verified capture, and links to a fictional three-friend rehearsal. The lab compares exact example budgets and simple word overlap, then demonstrates plan selection and simulated approvals; saved-group recommendations still use server-local BGE and hard eligibility checks. The group modal no longer repeats the experience selector, the seat canvas explains a frozen hold, interrupted-approval recheck appears only with a saved order, and solo workshops are identified as a separate one-buyer example.
+
+New expense shares can reference stable owner-scoped friend IDs; the server rejects cross-owner, duplicate and mismatched references and snapshots the chosen number and UPI handle. Split cards show each person's exact amount and optional unverified host UPI/PayPal receiving handle. Activity tracks open splits, History retains all, and Recurring can prefill a monthly split for manual review. Receipt scanning remains an unsaved editable suggestion from the optional local Qwen model; absent model assets leave manual entry available. Schema revision 8 adds contact and receiving-handle tables after the existing published revision 7, and repairs missing merchant columns when migrating the divergent local expense-only revision 7. No buyer credentials, membership or payment authorization are inferred from contact details.
+
+Automated payment/model tests use fakes. This integrated UX has not had rendered browser acceptance, a live multi-buyer Sandbox purchase or a managed PostgreSQL run. The separate Chrome review below covers the previous Bills & Splits surface only.
+
 ## 5 November 2026: judge-facing clarity and Bills & Splits UX
 
 Applied the first user-testing clarity pass on local branch `release/hackathon-2026-11-04`. Invite-copy actions now produce an accessible toast and state that every participant uses their own browser profile/device. Recommendation objectives use outcome-oriented language—fair-for-everyone, strongest overall fit, or both—with an inline explanation of the trade-off. The standalone workshop surface is labeled as a checkout demo rather than part of the core collaborative journey.
@@ -108,6 +116,13 @@ AI status: model-loading/semantic-ranking code is integrated but actual inferenc
 Local credentials, databases, archives and runtime state are excluded. No merge, deployment, production-money readiness or external acceptance is implied.
 
 ## Latest pass: guided redesign and on-device AI
+
+### Addendum: Context Copilot and design system v2 (local, uncommitted)
+
+- Added a read-only, server-local Context Copilot: `POST /api/groups/<id>/assistant/chat` (`app/recommendations/chat.py`). It retrieves from the caller's own room snapshot with the same local BGE encoder (`Xenova/bge-small-en-v1.5`), routes intent semantically (calibrated threshold 0.62), cites its context chunks and shows the model/fallback mode. It never confirms preferences, approves, changes prices/inventory or starts payment. `public/room.js` renders it in an always-visible panel; the private preference box now states that it records preferences only.
+- Static JS/CSS are served with `no-cache` revalidation. `public/style.css` ends with a "design system v2" block (transform/opacity-only motion, reduced-motion honoured) and a "v3" block (midnight header, dark hero and page banners, vivid animated aurora background, gradient actions, faster entrances).
+- Development seed refresh (`Store.seed`): when every sample catalog session has elapsed, sessions roll forward by whole weeks (weekday and time preserved; prices, merchants, resources untouched). Without it an older development database showed an empty catalog. Production never runs `seed()`. Test: `tests/test_catalog_refresh.py`.
+- Evidence: 225 backend tests and both Node contracts passed (mocked providers; embeddings mocked only in tests). The real BGE model ran locally in the browser-driven check: Copilot answered "next step" for a new one-member group. Live PayPal Sandbox, PostgreSQL and mobile/keyboard review remain unverified.
 
 The user explicitly requested a better UI and real AI novelty after the original-style integration. This pass supersedes the prior requirement to keep the original presentation; it preserves the collaborative booking capabilities and corrected financial protocol. The source-only checkpoint is ignored under `../.local-archive/before-guided-design-*`. No financial data or credentials were copied into it.
 

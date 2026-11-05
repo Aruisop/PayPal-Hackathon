@@ -24,7 +24,7 @@
       ['movie', 'excursion'].includes(offer.domain) && offer.currency === 'USD' &&
       Number.isSafeInteger(offer.priceMinor) && offer.priceMinor > 0 &&
       Array.isArray(offer.resources) && offer.resources.length >= 3).map((offer, i) => ({
-      id: `SIM-OFFER-${i + 1}`, title: String(offer.title), domain: offer.domain,
+      id: `SIM-OFFER-${i + 1}`, title: String(offer.title), description: String(offer.description || ''), domain: offer.domain,
       total: offer.priceMinor * (offer.domain === 'movie' ? 3 : 1),
       source: 'Catalog snapshot copied for simulation; real availability is not reserved.',
       resources: offer.resources.map((r, j) => ({id: `SIM-RESOURCE-${i + 1}-${j + 1}`, label: String(r.label), row: String(r.row), col: Number(r.col)})),
@@ -32,7 +32,7 @@
     // Fixtures keep the lab available without credentials or an initialized catalog.
     for (const [domain, title, total] of [['movie', 'Fictional cinema screening', 4800], ['excursion', 'Fictional $100 group excursion', 10000]]) {
       if (!normalized.some((o) => o.domain === domain)) normalized.push({
-        id: `SIM-FIXTURE-${domain}`, domain, title, total,
+        id: `SIM-FIXTURE-${domain}`, domain, title, description: domain === 'movie' ? 'A cinema night with a story to share.' : 'An outdoor adventure with scenic places.', total,
         source: 'Standalone fictional fixture, not a live catalog offer.',
         resources: Array.from({length: 6}, (_, i) => ({id: `SIM-${domain}-${i + 1}`, label: domain === 'movie' ? `A${i + 1}` : `Place ${i + 1}`, row: 'A', col: i + 1})),
       });
@@ -60,13 +60,32 @@
     return {
       offers: copy(catalog), scenario, run, phase: 'PLANNING', selected: selected.id,
       resources: initialResources(selected), inventory: 'FREE', active: 0, splitView: false,
-      members: PEOPLE.map((name) => ({name, budget: 5000, notes: '', confirmed: false, payment: 'NOT_STARTED', available: 5000})),
+      members: PEOPLE.map((name, i) => ({name, budget: 5000,
+        notes: ['science fiction cinema', 'movie night', 'outdoor adventure'][i],
+        confirmed: false, payment: 'NOT_STARTED', available: 5000})),
       shares: [], ledger: [], captureIndex: 0, scan: '',
       timeline: [`SIM session ${run} started. Nothing is saved or sent to a provider.`],
     };
   }
 
   const offerFor = (state) => state.offers.find((offer) => offer.id === state.selected);
+
+  function suggestions(state) {
+    if (state.members.some((member) => !member.confirmed)) return [];
+    return state.offers.map((offer) => {
+      const shares = split(offer.total, state.members.length);
+      const blockers = state.members.filter((member, i) => member.budget < shares[i]).map((member) => member.name);
+      const haystack = `${offer.title} ${offer.description || ''} ${offer.domain}`.toLowerCase();
+      const matching = state.members.map((member) => {
+        const words = [...new Set(member.notes.toLowerCase().match(/[a-z]{3,}/g) || [])];
+        return words.filter((word) => haystack.includes(word));
+      });
+      return {id: offer.id, title: offer.title, shares, blockers,
+        matching: matching.map((words, i) => `${state.members[i].name}: ${words.length ? words.join(', ') : 'no keyword overlap'}`),
+        coverage: matching.filter((words) => words.length).length};
+    }).sort((a, b) => Number(Boolean(a.blockers.length)) - Number(Boolean(b.blockers.length)) ||
+      b.coverage - a.coverage || a.title.localeCompare(b.title));
+  }
 
   function quote(state) {
     const offer = offerFor(state);
@@ -115,7 +134,7 @@
         const member = person(action.index);
         if (!Number.isSafeInteger(action.budget) || action.budget < 0) throw new Error('Invalid budget.');
         member.budget = action.budget; member.notes = String(action.notes || '').slice(0, 500); member.confirmed = true;
-        log(`${member.name} confirmed a ${money(member.budget)} ceiling. Notes are descriptive; this lab only matches budgets and seats.`);
+        log(`${member.name} confirmed a ${money(member.budget)} ceiling and their example likes. The lab compares budget and keyword overlap; the saved group uses verified constraints and local BGE.`);
         break;
       }
       case 'SELECT': {
@@ -254,7 +273,7 @@
       const focusKey = element.contains(focused) ? focused.getAttribute('data-demo-focus') : null;
       const shell = make('div', undefined, 'demo-shell');
       shell.append(make('p', 'JUDGE HUB / LOCAL SIMULATION', 'demo-eyebrow'), make('h2', 'See the coordination, feel the difference'));
-      shell.append(make('p', 'Interactive fictional participants. No PayPal, Gemini, bank query, session change or real reservation. Everything lives only in this panel and disappears on reload.', 'demo-disclosure'));
+      shell.append(make('p', '1. Confirm each fictional person. 2. Compare matching plans. 3. Select one and hold places. 4. Switch people to approve their shares. 5. Capture and see tickets. All actions stay in browser memory; the payment steps represent the real PayPal sequence without contacting PayPal.', 'demo-disclosure'));
       const scenarios = make('div', undefined, 'demo-toolbar');
       for (const [id, label] of [['movie', 'Cinema walkthrough'], ['excursion', '$100 excursion split'], ['chaos', 'Chaos Lab · third capture fails']]) {
         const control = button(label, {type: 'SCENARIO', scenario: id}); control.setAttribute('aria-pressed', String(state.scenario === id)); scenarios.append(control);
@@ -270,11 +289,18 @@
       const members = make('div', undefined, state.splitView ? 'demo-people demo-people-split' : 'demo-people');
       (state.splitView ? [0, 1, 2] : [state.active]).forEach((i) => members.append(panel(i))); shell.append(members);
 
-      const booking = section('1. Shared quote & simulated places'); const offer = offerFor(state); const result = quote(state);
+      const booking = section('1. Match, select & hold a plan'); const offer = offerFor(state); const result = quote(state);
       if (state.phase === 'PLANNING') {
-        const selectLabel = make('label', 'Experience'); const select = make('select'); select.setAttribute('data-demo-focus', 'offer-select');
-        state.offers.forEach((o) => { const option = make('option', `${o.title} · ${money(o.total)} group total`); option.value = o.id; option.selected = o.id === state.selected; select.append(option); });
-        select.addEventListener('change', () => act({type: 'SELECT', id: select.value})); selectLabel.append(select); booking.append(selectLabel);
+        const compared = suggestions(state);
+        booking.append(make('p', compared.length ? 'Teaching preview: exact example shares filter budgets first; simple keyword overlap orders the remaining plans. This is separate from the saved group’s local AI comparison.' : 'Confirm Alice, Bob and Charlie above to compare plans. Their example likes are editable.', 'demo-note'));
+        for (const candidate of compared) {
+          const row = make('div', undefined, 'demo-match');
+          row.append(make('strong', `${candidate.title}${candidate.id === state.selected ? ' · selected' : ''}`),
+            make('p', `${candidate.shares.map(money).join(' + ')} · ${candidate.blockers.length ? `Over budget for ${candidate.blockers.join(', ')}` : `Keyword overlap for ${candidate.coverage} of 3 people`}`, 'demo-note'));
+          if (!candidate.blockers.length) row.append(button(candidate.id === state.selected ? 'Selected for review' : 'Select this plan', {type: 'SELECT', id: candidate.id}, candidate.id === state.selected));
+          booking.append(row);
+        }
+        booking.append(make('p', `Selected plan: ${offer.title}. The organizer can change the example places below before holding.`, 'demo-note'));
         const places = make('fieldset', undefined, 'demo-resources'); places.append(make('legend', 'Choose three local places (movie seats must be adjacent)'));
         offer.resources.forEach((resource) => {
           const label = make('label', resource.label); const input = make('input'); input.type = 'checkbox'; input.checked = state.resources.includes(resource.id);
@@ -321,7 +347,7 @@
     return {getState: () => copy(state), destroy: () => element.replaceChildren()};
   }
 
-  const api = {mount, createState, reduce, quote, readiness, participantView, split, cents};
+  const api = {mount, createState, reduce, quote, suggestions, readiness, participantView, split, cents};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GroupPayDemo = api;
 })(typeof window !== 'undefined' ? window : globalThis);

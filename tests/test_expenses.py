@@ -71,6 +71,57 @@ class ExpensesTests(unittest.TestCase):
         self.post(self.owner, '/api/expenses/friends', {'name': 'Dana'})
         self.assertEqual(self.member.get('/api/expenses/friends').json['friends'], [])
 
+    def test_new_split_links_selected_friend_by_owned_id_and_keeps_contact_snapshot(self):
+        friend = self.post(self.owner, '/api/expenses/friends', {
+            'name': 'Dana', 'upiID': 'dana@upi', 'whatsapp': '+91 98765 43210'}).json['friends'][0]
+        split = self.create_split(self.owner, shares=[
+            {'name': 'You', 'amountMinor': 2000, 'isPayer': True},
+            {'name': 'Dana', 'amountMinor': 2000, 'isPayer': False, 'friendID': friend['id']}]).json['split']
+        share = next(item for item in split['shares'] if not item['isPayer'])
+        self.assertEqual((share['friendID'], share['whatsapp'], share['upiID']),
+                         (friend['id'], friend['whatsapp'], friend['upiID']))
+        self.post(self.owner, f"/api/expenses/friends/{friend['id']}/delete", {})
+        saved = self.owner.get('/api/expenses/splits').json['splits'][0]
+        self.assertEqual(next(item for item in saved['shares'] if not item['isPayer'])['whatsapp'],
+                         '+91 98765 43210')
+
+    def test_friend_reference_cannot_cross_owner_or_change_name(self):
+        friend = self.post(self.member, '/api/expenses/friends', {'name': 'Dana'}).json['friends'][0]
+        for name, friend_id in [('Dana', friend['id']), ('Fake', friend['id'])]:
+            denied = self.create_split(self.owner, shares=[
+                {'name': 'You', 'amountMinor': 100, 'isPayer': True},
+                {'name': name, 'amountMinor': 100, 'isPayer': False, 'friendID': friend_id}])
+            self.assertEqual(denied.status_code, 400)
+            self.assertEqual(denied.json['error'], 'FRIEND_REFERENCE_MISMATCH')
+        own = self.post(self.owner, '/api/expenses/friends', {'name': 'Dana'}).json['friends'][0]
+        denied = self.create_split(self.owner, shares=[
+            {'name': 'You', 'amountMinor': 100, 'isPayer': True},
+            {'name': 'Not Dana', 'amountMinor': 100, 'isPayer': False, 'friendID': own['id']}])
+        self.assertEqual(denied.json['error'], 'FRIEND_REFERENCE_MISMATCH')
+        self.assertEqual(self.owner.get('/api/expenses/splits').json['splits'], [])
+
+    def test_duplicate_or_payer_friend_reference_is_rejected(self):
+        friend = self.post(self.owner, '/api/expenses/friends', {'name': 'Dana'}).json['friends'][0]
+        duplicate = self.create_split(self.owner, shares=[
+            {'name': 'You', 'amountMinor': 100, 'isPayer': True},
+            {'name': 'Dana', 'amountMinor': 100, 'isPayer': False, 'friendID': friend['id']},
+            {'name': 'D. Other', 'amountMinor': 100, 'isPayer': False, 'friendID': friend['id']}])
+        self.assertEqual(duplicate.json['error'], 'DUPLICATE_FRIEND_REFERENCE')
+        payer = self.create_split(self.owner, shares=[
+            {'name': 'You', 'amountMinor': 100, 'isPayer': True, 'friendID': friend['id']},
+            {'name': 'Dana', 'amountMinor': 100, 'isPayer': False}])
+        self.assertEqual(payer.json['error'], 'INVALID_FRIEND_REFERENCE')
+
+    def test_manual_receiving_handles_are_saved_without_payment_authority(self):
+        result = self.create_split(self.owner, payee={
+            'hostName': 'Asha', 'upiID': 'asha@upi', 'paypalEmail': 'asha@example.test'})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json['split']['payee'], {
+            'hostName': 'Asha', 'upiID': 'asha@upi', 'paypalEmail': 'asha@example.test'})
+        self.assertEqual(self.member.get('/api/expenses/splits').json['splits'], [])
+        invalid = self.create_split(self.owner, payee={'paypalEmail': 'not-an-address'})
+        self.assertEqual(invalid.json['error'], 'INVALID_PAYPAL_EMAIL')
+
     # ------------------------------------------------------------- splits
     def test_create_split_requires_exactly_one_payer_and_unique_names(self):
         zero_payers = self.create_split(self.owner, shares=[
@@ -170,6 +221,69 @@ class ExpensesTests(unittest.TestCase):
 
         removed = self.post(self.owner, f"/api/expenses/subscriptions/{sub['id']}/delete", {})
         self.assertEqual(removed.json['subscriptions'], [])
+
+    def test_subscription_host_and_upi_survive_reload_and_are_private(self):
+        saved = self.post(self.owner, '/api/expenses/subscriptions', {
+            'name': 'Netflix', 'monthlyAmountMinor': 1599, 'billingDay': 12,
+            'hostName': 'Asha', 'upiID': 'asha@upi',
+            'participants': [{'name': 'Dana', 'whatsapp': '+919876543210'}]})
+        self.assertEqual(saved.status_code, 200)
+        sub = self.owner.get('/api/expenses/subscriptions').json['subscriptions'][0]
+        self.assertEqual((sub['hostName'], sub['upiID'], sub['participants'][0]['whatsapp']),
+                         ('Asha', 'asha@upi', '+919876543210'))
+        self.assertEqual(self.member.get('/api/expenses/subscriptions').json['subscriptions'], [])
+
+    def test_revision_seven_to_eight_preserves_existing_contact_and_ledger_rows(self):
+        from sqlalchemy import insert, select
+        from app.shared.storage import (Store, expense_friends, expense_shares, expense_splits,
+                                        expense_share_contacts, versions)
+        old = Store('sqlite:///' + (Path(self.directory.name) / 'old-revision.db').as_posix())
+        try:
+            old.migrate(target=7)
+            participant, _ = old.new_participant()
+            with old.engine.begin() as connection:
+                connection.execute(insert(expense_friends).values(
+                    id='old-friend', owner_id=participant['id'], name='Dana', upi_id='dana@upi',
+                    whatsapp='1234567890', created_at=1))
+                connection.execute(insert(expense_splits).values(
+                    id='old-split', owner_id=participant['id'], group_id=None, title='Prior bill',
+                    category='food', total_minor=2000, currency='USD', source='manual',
+                    receipt_meta_json='{}', created_at=1))
+                connection.execute(insert(expense_shares).values(
+                    id='old-share', split_id='old-split', name='Dana', amount_minor=2000,
+                    is_payer=0, settled=0, settled_at=None))
+            old.migrate(target=8)
+            old.migrate(target=8)
+            with old.engine.connect() as connection:
+                self.assertEqual(connection.execute(select(versions.c.revision)).scalar_one(), 8)
+                self.assertEqual(connection.execute(select(expense_friends.c.name)).scalar_one(), 'Dana')
+                self.assertEqual(connection.execute(select(expense_splits.c.total_minor)).scalar_one(), 2000)
+                self.assertEqual(connection.execute(select(expense_shares.c.name)).scalar_one(), 'Dana')
+                self.assertEqual(connection.execute(select(expense_share_contacts)).all(), [])
+        finally:
+            old.engine.dispose()
+
+    def test_expense_only_local_revision_seven_gains_merchant_columns_and_snapshots(self):
+        from sqlalchemy import inspect, select
+        from app.shared.storage import (Store, expense_friends, expense_profiles, expense_shares,
+                                        expense_splits, expense_subscription_participants,
+                                        expense_subscriptions, expense_share_contacts, versions)
+        old = Store('sqlite:///' + (Path(self.directory.name) / 'local-seven.db').as_posix())
+        try:
+            old.migrate(target=5)
+            with old.engine.begin() as connection:
+                for table in (expense_profiles, expense_friends, expense_splits, expense_shares,
+                              expense_subscriptions, expense_subscription_participants):
+                    table.create(connection, checkfirst=True)
+                connection.execute(versions.update().where(versions.c.id == 1).values(revision=7))
+            old.migrate(target=8)
+            with old.engine.connect() as connection:
+                self.assertEqual(connection.execute(select(versions.c.revision)).scalar_one(), 8)
+                columns = {column['name'] for column in inspect(connection).get_columns('workshop_groups')}
+                self.assertTrue({'checkout_mode', 'target_member_count', 'merchant_offer_id'} <= columns)
+                self.assertEqual(connection.execute(select(expense_share_contacts)).all(), [])
+        finally:
+            old.engine.dispose()
 
     # ------------------------------------------------------------- analytics
     def test_analytics_aggregates_by_category_and_month(self):

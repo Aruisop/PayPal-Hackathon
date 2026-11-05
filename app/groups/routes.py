@@ -106,6 +106,17 @@ def send_room_message(group_id):
     return jsonify(_extension('room').post_message(g.participant['id'], group_id, body.get('text') if isinstance(body, dict) else None))
 
 
+@blueprint.post('/api/groups/<group_id>/assistant/chat')
+def contextual_group_chat(group_id):
+    body = request.get_json()
+    if not isinstance(body, dict):
+        raise AIError('INVALID_REQUEST')
+    return jsonify(_extension('assistant').chat(
+        g.participant['id'], group_id, body.get('prompt'), body.get('domain', 'movie'),
+        body.get('objective', 'compromise'), body.get('history')
+    ))
+
+
 @blueprint.post('/api/groups/<group_id>/selection')
 def select_group_workshop(group_id):
     body = request.get_json()

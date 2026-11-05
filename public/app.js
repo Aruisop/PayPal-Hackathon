@@ -118,7 +118,7 @@ function showToast(message, tone = 'success') {
   toast.textContent = message;
   toast.className = `app-toast app-toast-${tone}`;
   toast.hidden = false;
-  requestAnimationFrame(() => toast.classList.add('is-visible'));
+  toast.classList.add('is-visible');
   toastTimer = setTimeout(() => {
     toast.classList.remove('is-visible');
     setTimeout(() => { toast.hidden = true; }, 180);
@@ -185,6 +185,9 @@ async function api(path, body) {
       PAYMENT_RECOVERY_REQUIRED: 'The payment outcome needs reconciliation. Recheck your saved order before another attempt.',
       ALL_AUTHORIZATIONS_REQUIRED: 'Every frozen member must approve their own share before capture.',
       ROSTER_ALREADY_FROZEN: 'This group already has a reservation. Complete it or reconcile cancellation before changing the plan.',
+      INVALID_PREFERRED_DAYS: 'Use weekday names such as Friday, Saturday, separated by commas. Leave the field blank for any day.',
+      INVALID_DATES: 'Use dates in YYYY-MM-DD format, separated by commas.',
+      INVALID_TIME_WINDOW: 'Check your start and finish times. The earliest start cannot be later than the latest start.',
     };
     const err = new Error(data.message || messages[data.error] || data.exactFailureCause || data.error || 'The request failed.');
     err.status = response.status;
@@ -227,6 +230,8 @@ function setupTabs() {
   $('hero-join-group-btn')?.addEventListener('click', () => openJoinGroupModal());
   $('groups-create-btn')?.addEventListener('click', () => openCreateGroupModal());
   $('groups-join-btn')?.addEventListener('click', () => openJoinGroupModal());
+  $('hero-demo-btn')?.addEventListener('click', () => runShowcaseDemo('happy_path', 'movie'));
+  $('hero-splits-btn')?.addEventListener('click', () => switchTab('expenses'));
 }
 
 function switchTab(tab) {
@@ -367,14 +372,14 @@ function renderMyGroups() {
         </div>
         <div class="group-item-meta">
           <span>${grp.memberCount || grp.members?.length || 1} Members</span>
-          <span>Multi-Buyer PayPal Hold</span>
+          <span>Each member approves their own share</span>
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button type="button" class="btn btn-primary btn-sm btn-open-group" data-group-id="${grp.id}" style="flex:1;">
             ${isMerchantCheckout ? 'Open merchant checkout' : 'Open Group Room'} &rarr;
           </button>
           <button type="button" class="btn btn-secondary btn-sm btn-copy-grp-link" ${grp.inviteURL ? '' : 'hidden'} data-url="${escapeHtml(grp.inviteURL || '')}" title="Copy Invite Link">
-            Invite Link
+            Copy invite
           </button>
         </div>
       </div>
@@ -391,10 +396,10 @@ function renderMyGroups() {
     btn.addEventListener('click', () => {
       SOUNDS.click();
       const url = btn.dataset.url || window.location.origin;
-      if (!navigator.clipboard) { showToast('Clipboard is unavailable. Copy the visible invite link manually.', 'warning'); return; }
+      if (!navigator.clipboard) { window.prompt('Copy this invite link', url); return; }
       navigator.clipboard.writeText(url).then(() => {
         showToast('Invite copied — send it to each friend. Everyone joins from their own browser profile or device.');
-      }).catch(() => showToast('Could not copy automatically. Copy the visible invite link manually.', 'warning'));
+      }).catch(() => window.prompt('Copy this invite link', url));
     });
   });
 }
@@ -499,7 +504,7 @@ function setupGroupModals() {
       await selectGroup(newGrp.id, preferredOffer);
       setCollabStatus(`Group '${name}' created! Share invite link with friends.`);
     } catch (err) {
-      alert(`Could not create group: ${err.message}`);
+      showToast(`Could not create group: ${err.message}`, 'error');
     }
   });
 
@@ -529,7 +534,7 @@ function setupGroupModals() {
       else await selectGroup(joined.id);
       setCollabStatus(`Joined group '${joined.name}'!`);
     } catch (err) {
-      alert(`Could not join group: ${err.message}`);
+      showToast(`Could not join group: ${err.message}`, 'error');
     }
   });
 }
@@ -540,6 +545,8 @@ function openCreateGroupModal(preselectOfferId = null) {
   $('create-group-name').value = '';
   if (preselectOfferId) {
     $('create-group-offer-select').value = preselectOfferId;
+  } else {
+    $('create-group-offer-select').value = '';
   }
   $('create-group-name').focus();
 }

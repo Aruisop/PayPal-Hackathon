@@ -41,6 +41,32 @@ test('three independently confirmed budgets gate the quote', () => {
   assert.match(demo.quote(state).conflicts.join(' '), /Charlie: \$6.00 over/);
   assert.throws(() => demo.reduce(state, {type: 'FREEZE'}));
 });
+test('teaching comparison waits for confirmations, filters exact budgets and orders descriptive overlap', () => {
+  const offers = [
+    {id: 'cinema', domain: 'movie', title: 'Science fiction cinema', description: 'A space story', priceMinor: 1600, currency: 'USD', resources: [1, 2, 3].map((col) => ({id: `m${col}`, row: 'A', col, label: `A${col}`}))},
+    {id: 'trek', domain: 'excursion', title: 'Mountain trek', description: 'Outdoor adventure', priceMinor: 10000, currency: 'USD', resources: [1, 2, 3].map((col) => ({id: `t${col}`, row: 'A', col, label: `P${col}`}))},
+  ];
+  let state = demo.createState(offers);
+  assert.deepEqual(demo.suggestions(state), []);
+  for (let index = 0; index < 3; index++) state = demo.reduce(state, {type: 'PREFERENCE', index, budget: 5000, notes: 'science fiction'});
+  const compared = demo.suggestions(state);
+  assert.equal(compared[0].title, 'Science fiction cinema');
+  assert.equal(compared[0].coverage, 3);
+  assert.deepEqual(compared[1].shares, [3334, 3333, 3333]);
+  state = demo.reduce(state, {type: 'PREFERENCE', index: 2, budget: 1000, notes: 'mountain'});
+  assert.deepEqual(demo.suggestions(state).map((item) => item.blockers), [['Charlie'], ['Charlie']]);
+});
+test('selecting a suggested plan changes only the local quote and preserves individual approval gates', () => {
+  let state = demo.createState([]);
+  for (let index = 0; index < 3; index++) state = demo.reduce(state, {type: 'PREFERENCE', index, budget: 5000, notes: 'adventure'});
+  const adventure = demo.suggestions(state).find((item) => item.title.includes('excursion'));
+  state = demo.reduce(state, {type: 'SELECT', id: adventure.id});
+  assert.equal(state.selected, adventure.id);
+  assert.deepEqual(demo.quote(state).shares, [3334, 3333, 3333]);
+  state = demo.reduce(state, {type: 'FREEZE'});
+  assert.equal(state.members.every((member) => member.payment === 'AWAITING_APPROVAL'), true);
+  assert.throws(() => demo.reduce(state, {type: 'FINALIZE'}));
+});
 test('copied catalog and reducer inputs stay untouched', () => {
   const offers = [{id: 'real-offer', domain: 'movie', title: '<img src=x>', priceMinor: 1800, currency: 'USD', resources: [1, 2, 3].map((i) => ({id: `real-${i}`, row: 'A', col: i, label: `A${i}`, state: 'BOOKED'}))}];
   const snapshot = JSON.stringify(offers);
@@ -154,7 +180,7 @@ test('browser mount is isolated, text-rendered and resettable without external c
   const all = one.querySelectorAll();
   const reset = all.find((node) => node.textContent === 'Reset local demo'); reset.handlers.click();
   assert.equal(first.getState().run, 2); assert.equal(second.getState().run, 1);
-  assert.ok(all.some((node) => /No PayPal, Gemini, bank query/.test(node.textContent)));
+  assert.ok(all.some((node) => /without contacting PayPal/.test(node.textContent)));
   first.destroy(); assert.equal(one.children.length, 0); assert.equal(two.children.length, 1);
   function click(text) {
     const control = two.querySelectorAll().find((node) => node.tagName === 'button' && node.textContent === text);
