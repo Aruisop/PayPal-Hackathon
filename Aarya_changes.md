@@ -1,5 +1,13 @@
 # Aarya changes: guided UI improvements and integration review
 
+## 5 November 2026: local `dev/pan` product clarity pass
+
+Based on `13ce0c6` on `dev/pan`, this uncommitted review candidate adds a home-page path chooser, plain-language process steps, a preference-to-selection solo demonstration, simpler room status, toast feedback for invites and errors, and approval recheck only when a PayPal order is saved. The seat picker closes after a hold; the selection canvas explains the next payment step. A catalog card remains a starting point until confirmed group matching; the create modal no longer presents a duplicate experience chooser. Solo workshops are identified as the independent one-buyer reference flow.
+
+Splits now accepts stable owner-scoped friend IDs and stores contact snapshots for new shares, rejecting cross-owner or mismatched references. Revision 7 adds separate tables for those snapshots and optional manual receiving handles plus subscription host details; historical revision 6 rows remain name-only. Friends are searchable by name, number or UPI ID. Activity shows open entries, History shows all, and a recurring reminder can prefill a new monthly ledger split. Receipt scan remains an unsaved local-model suggestion and equal-share review. UPI IDs and PayPal email addresses are unverified receiving handles, never buyer credentials or payment proof. Group membership still requires each friend's own invite acceptance and browser identity.
+
+The solo demo's keyword and budget comparison is a teaching simulation. The saved group recommendation still uses the constraint-first server BGE flow. No live PayPal Sandbox purchase, managed PostgreSQL run or rendered-browser acceptance is claimed. The current environment reports no configured PayPal client and no running Ollama vision model. Verification for this pass is recorded in the final handoff; no commit, push, merge or deployment was requested.
+
 ## 28 October 2026: Common Ground phases 1 and 2
 
 Fetched `Aruisop/PayPal-Hackathon` `dev/aarya` and fast-forwarded the clean nested application from `452d430` to `4fabe98`, incorporating the collaborators' feature-package refactor. The outer repository, including its separate `dev-snikitha/` checkout, is untouched. This new implementation remains local and uncommitted.

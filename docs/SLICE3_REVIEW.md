@@ -1,6 +1,8 @@
-﻿# Subsequent actual-inference recommendation candidate
+# Subsequent actual-inference recommendation candidate
 
-Current audit (28 October 2026): this local candidate is based on dev/aarya at 4fabe98 plus uncommitted guided-flow work. 197 Python tests pass. Real BGE embeddings and the authenticated recommendation route have passed on synthetic temporary data. The live app has prepared assets but its saved catalog has no future offers; no ranking can run until there are candidates. The redundant browser MiniLM feature was removed because its execution was unverified. Browser rendering and real multi-buyer Sandbox acceptance remain pending. See Aarya_changes.md.
+5 November 2026 local UX review: `dev/pan` at `13ce0c6` plus an uncommitted clarity/contact snapshot pass. Revision 7 affects only the informal expense ledger. The saved Slice 3 booking approval/capture guards remain intact; live Sandbox and rendered browser acceptance are still unverified. See [Aarya changes](../Aarya_changes.md).
+
+Historical audit (28 October 2026): this local candidate was based on dev/aarya at 4fabe98 plus uncommitted guided-flow work. 197 Python tests passed. Real BGE embeddings and the authenticated recommendation route passed on synthetic temporary data. The live app then had no future offers. The redundant browser MiniLM feature was removed because its execution was unverified. Browser rendering and real multi-buyer Sandbox acceptance remained pending. See Aarya_changes.md.
 
 # Historical recommendation-candidate and UI-first snapshots
 

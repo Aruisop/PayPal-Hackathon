@@ -11,10 +11,13 @@
     return result;
   }
   const list = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+  const weekdays = new Set(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
   function constraints(fields) {
     const time = {};
     for (const key of ['earliest', 'latest', 'finish_before']) if (fields[key]) time[key] = fields[key];
-    return {budget_cents: cents(fields.budget), currency: 'USD', preferred_days: list(fields.days).map((day) => day.toLowerCase()),
+    const days = list(fields.days).map((day) => day.toLowerCase());
+    if (days.some((day) => !weekdays.has(day))) throw new Error('Enter full weekday names separated by commas, such as Friday, Saturday. Leave blank for any day.');
+    return {budget_cents: cents(fields.budget), currency: 'USD', preferred_days: days,
       dates: list(fields.dates), timezone: fields.timezone, time_window: time,
       hard_constraints: [], soft_preferences: list(fields.preferences), clarifications: []};
   }
@@ -67,6 +70,7 @@
     $('collab-status-feed').textContent = text;
     $('collab-status-feed').classList.toggle('error', error);
     if (error) $('room-next-action').textContent = text;
+    if (error) root.groupPayToast?.(text, true);
   };
   const button = (text, action, cls = 'btn btn-secondary') => {
     const item = node('button', text, cls); item.type = 'button';
@@ -273,8 +277,8 @@
         details: response.retrieval?.intent === 'greeting' ? [] : details});
       renderAgentFeed();
       const engine = response.retrieval?.mode === 'semantic_local_embeddings'
-        ? `local ${response.retrieval.model || 'embedding model'}` : 'keyword fallback (local model unavailable)';
-      $('room-agent-status').textContent = `Grounded on ${response.context?.chunkCount || 0} context chunks · ${engine} · snapshot ${response.context?.snapshotHash || 'n/a'}`;
+        ? `Local AI (${response.retrieval.model || 'BGE'})` : 'Basic local lookup (AI unavailable)';
+      $('room-agent-status').textContent = `${engine} · Answered from this room's saved details.`;
     } catch (error) {
       if (current(id, epoch)) {
         dropPending();
@@ -329,8 +333,15 @@
   function renderSeats() {
     const parent = $('interactive-seat-map'); parent.replaceChildren();
     const offer = state.offer;
-    $('room-canvas-empty').hidden = !!offer || frozen();
-    $('room-selection-tools').hidden = !offer;
+    $('room-canvas-empty').hidden = !!offer && !frozen();
+    $('room-selection-tools').hidden = !offer || frozen();
+    if (frozen()) {
+      $('room-canvas-empty-title').textContent = 'Places are held for this group.';
+      $('room-canvas-empty-detail').textContent = 'Each member reviews their own share below. The organizer completes capture after every authorization.';
+    } else {
+      $('room-canvas-empty-title').textContent = 'Save a place for everyone.';
+      $('room-canvas-empty-detail').textContent = 'After everyone confirms preferences, the organizer compares eligible plans and chooses adjacent places here.';
+    }
     $('canvas-experience-sub').textContent = offer ? `${offer.title} · ${schedule(offer.scheduleTime)}` : frozen() ? `${state.booking.title} · ${state.booking.myShare?.assignedResource || 'saved reservation'}` : 'Confirm preferences and review a compatible match to choose seats or places.';
     if (!offer) { parent.append(node('p', 'Your shared experience will appear here.', 'fine')); renderQuote(); return; }
     $('seat-map-screen-text').textContent = offer.domain === 'movie' ? 'YOUR CINEMA SEATS' : 'YOUR ADVENTURE PLACES';
@@ -400,13 +411,14 @@
     $('room-cancel').hidden = !organizer;
     $('room-cancel').disabled = locked() || !booking?.hasBooking || closed(booking) || booking.state === 'CONFIRMED';
     $('room-recheck').disabled = locked() || !booking?.hasBooking || closed(booking) || booking.state === 'CONFIRMED';
+    $('room-recheck').hidden = !booking?.myShare?.orderID || ['AUTHORIZED', 'CAPTURED'].includes(booking?.myShare?.state) || closed(booking) || booking?.state === 'CONFIRMED';
     $('room-payment-policy').hidden = !canApprove(booking);
     $('room-consent').disabled = locked();
     $('canvas-lifecycle-badge').textContent = readable(booking?.state || 'PLANNING');
     const roster = $('canvas-member-auth-list'); roster.replaceChildren();
     if (booking?.myShare) roster.append(node('p', `YOUR SHARE: ${booking.myShare.shareValue} ${booking.currency} · ${booking.myShare.assignedResource} · ${readable(booking.myShare.state)}`, 'room-own-share'));
     for (const item of booking?.rosterProgress || []) roster.append(node('p', `${item.alias}: ${readable(item.state)}${item.shareValue ? ` · ${item.shareValue} ${booking.currency}` : ''}`, 'fine'));
-    $('room-payment-detail').textContent = [booking?.error, booking?.message, booking?.operationInProgress ? 'An operation is in progress. Wait before rechecking.' : '', booking?.myShare?.orderID ? `Your saved order: ${booking.myShare.orderID}` : ''].filter(Boolean).join(' · ');
+    $('room-payment-detail').textContent = [booking?.error, booking?.message, booking?.operationInProgress ? 'An operation is in progress. Wait before rechecking.' : '', booking?.myShare?.orderID ? `Your saved order: ${booking.myShare.orderID}` : '', !state.options.getConfig().configured && booking?.hasBooking ? 'PayPal Sandbox is not configured on this server, so approval cannot start.' : ''].filter(Boolean).join(' · ');
     if (booking?.myShare?.consentGiven) $('room-consent').checked = true;
     renderProgress(); renderBrief(); renderCatalogStatus(); countdown();
     if (!state.approval) renderPayPal().catch((error) => status(error.message, true));
@@ -815,7 +827,7 @@
     $('room-refresh').addEventListener('click', () => run(refresh));
     $('room-consent').addEventListener('change', () => renderPayPal().catch((error) => status(error.message, true)));
     $('copy-invite-btn').addEventListener('click', () => run(async () => {
-      try { await navigator.clipboard.writeText(state.group.inviteURL); status('Invite copied. Each participant needs a separate browser profile or device.'); }
+      try { await navigator.clipboard.writeText(state.group.inviteURL); status('Invite copied. Each participant needs a separate browser profile or device.'); root.groupPayToast?.('Invite copied. Share the link with your friends.'); }
       catch { $('room-invite-link').value = state.group.inviteURL; $('room-invite-link').hidden = false; $('room-invite-link').select(); status('Copy the selected invite manually.'); }
     }));
     document.querySelectorAll('.chip-preset').forEach((chip) => chip.addEventListener('click', () => { $('chat-input-text').value = chip.dataset.text; $('chat-input-text').focus(); }));

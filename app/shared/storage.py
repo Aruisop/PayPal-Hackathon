@@ -238,6 +238,25 @@ expense_subscription_participants = Table('expense_subscription_participants', m
     Column('name', String(80), nullable=False),
     Column('whatsapp', String(40), nullable=False, default=''))
 
+# Revision 7: contact snapshots for new ledger shares. Historical name-only
+# shares stay untouched; a deleted contact cannot silently redirect a reminder.
+expense_share_contacts = Table('expense_share_contacts', metadata,
+    Column('share_id', ForeignKey('expense_shares.id'), primary_key=True),
+    Column('friend_id', String(40), nullable=False),
+    Column('whatsapp', String(40), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''))
+
+expense_split_payees = Table('expense_split_payees', metadata,
+    Column('split_id', ForeignKey('expense_splits.id'), primary_key=True),
+    Column('host_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('paypal_email', String(160), nullable=False, default=''))
+
+expense_subscription_details = Table('expense_subscription_details', metadata,
+    Column('subscription_id', ForeignKey('expense_subscriptions.id'), primary_key=True),
+    Column('host_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''))
+
 
 def identifier():
     return secrets.token_hex(16)
@@ -289,8 +308,8 @@ class Store:
     def migrate(self, target=2):
         # Target defaults to 2 to preserve Slice 2 backward compatibility contract.
         from sqlalchemy import inspect
-        if target not in (2, 3, 4, 5, 6):
-            raise ValueError('Supported migration targets are 2, 3, 4, 5 and 6')
+        if target not in (2, 3, 4, 5, 6, 7):
+            raise ValueError('Supported migration targets are 2 through 7')
         if 'schema_versions' in inspect(self.engine).get_table_names():
             with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
@@ -333,7 +352,13 @@ class Store:
                     expense_subscription_participants.create(connection, checkfirst=True)
                     revision = 6
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=6))
-                if revision not in (2, 3, 4, 5, 6):
+                if revision == 6 and target >= 7:
+                    expense_share_contacts.create(connection, checkfirst=True)
+                    expense_split_payees.create(connection, checkfirst=True)
+                    expense_subscription_details.create(connection, checkfirst=True)
+                    revision = 7
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=7))
+                if revision not in (2, 3, 4, 5, 6, 7):
                     raise RuntimeError('Unsupported database revision; run the documented migration')
             return
         tables = [versions, participants, workshops, bookings, attempts, entitlements,
@@ -348,6 +373,8 @@ class Store:
         if target >= 6:
             tables += [expense_profiles, expense_friends, expense_splits, expense_shares,
                        expense_subscriptions, expense_subscription_participants]
+        if target >= 7:
+            tables += [expense_share_contacts, expense_split_payees, expense_subscription_details]
         metadata.create_all(self.engine, tables=tables)
         with self.engine.begin() as connection:
             connection.execute(insert(versions).values(id=1, revision=target))

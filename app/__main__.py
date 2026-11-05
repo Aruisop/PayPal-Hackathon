@@ -14,9 +14,9 @@ def main():
     args = parser.parse_args()
     if args.command == 'migrate':
         store = Store(database_url())
-        store.migrate(target=6)
+        store.migrate(target=7)
         store.seed()
-        print('Database revision 6 applied; catalog seeded if empty. No database URL displayed.')
+        print('Database revision 7 applied; catalog seeded if empty. No database URL displayed.')
     elif args.command == 'prepare-demo':
         if os.getenv('APP_ENV', 'development') != 'development':
             parser.error('prepare-demo is available only with APP_ENV=development.')

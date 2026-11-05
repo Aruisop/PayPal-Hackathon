@@ -70,7 +70,7 @@ def create_split():
     split = _expenses().create_split(
         g.participant['id'], body.get('title'), body.get('category'), body.get('currency', 'USD'),
         body.get('shares'), group_id=body.get('groupID'), source=body.get('source', 'manual'),
-        receipt_meta=body.get('receiptMeta'))
+        receipt_meta=body.get('receiptMeta'), payee=body.get('payee'))
     return jsonify(split=split)
 
 
@@ -108,7 +108,8 @@ def create_subscription():
     body = _body()
     subscriptions = _expenses().create_subscription(
         g.participant['id'], body.get('name'), body.get('monthlyAmountMinor'), body.get('billingDay'),
-        body.get('currency', 'USD'), body.get('participants', []))
+        body.get('currency', 'USD'), body.get('participants', []),
+        host_name=body.get('hostName', ''), upi_id=body.get('upiID', ''))
     return jsonify(subscriptions=subscriptions)
 
 

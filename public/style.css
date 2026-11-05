@@ -4271,3 +4271,38 @@ body::before {
 .room-agent-panel .panel-header h3,.room-agent-panel h2 {
   color:#fff;
 }
+
+/* Small guidance additions use the existing cards, spacing and color tokens. */
+.home-paths {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+  margin:0 0 24px;
+}
+.home-paths>div,.demo-match {
+  background:#fff;
+  border:1px solid #dfe4f2;
+  border-radius:18px;
+  padding:18px;
+}
+.home-paths strong { color:var(--night); }
+.home-paths p { color:#56627a; margin:8px 0 14px; line-height:1.55; }
+.app-toast {
+  position:fixed;
+  z-index:10000;
+  right:20px;
+  bottom:20px;
+  max-width:min(420px,calc(100vw - 40px));
+  padding:14px 18px;
+  color:#fff;
+  background:#17233c;
+  border-radius:14px;
+  box-shadow:0 14px 36px #10192f55;
+}
+.app-toast.error { background:#8d3045; }
+.demo-match { margin:10px 0; }
+.demo-match p { margin:7px 0; }
+@media(max-width:760px) {
+  .home-paths { grid-template-columns:1fr; }
+  .app-toast { right:12px; bottom:74px; }
+}

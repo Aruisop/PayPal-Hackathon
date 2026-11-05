@@ -14,6 +14,8 @@ assert.equal(helpers.cents(''), null);
 assert.throws(() => helpers.cents('1.001'));
 assert.throws(() => helpers.cents('-1'));
 assert.equal(helpers.constraints({budget: '0', days: '', dates: '', timezone: 'UTC'}).budget_cents, 0);
+assert.deepEqual(helpers.constraints({budget: '', days: 'Friday, Saturday', dates: '', timezone: 'UTC'}).preferred_days, ['friday', 'saturday']);
+assert.throws(() => helpers.constraints({budget: '', days: 'Any day', dates: '', timezone: 'UTC'}), /weekday names/);
 assert.equal(helpers.canApprove({state: 'AWAITING_AUTHORIZATIONS', holdDeadline: 200, myShare: {state: 'ACCEPTED'}}, 100), true);
 assert.equal(helpers.canApprove({state: 'RECOVERY_REQUIRED', holdDeadline: 200, myShare: {state: 'ACCEPTED'}}, 100), false);
 assert.equal(helpers.canApprove({state: 'AWAITING_AUTHORIZATIONS', holdDeadline: 99, myShare: {state: 'ACCEPTED'}}, 100), false);
@@ -225,6 +227,9 @@ const text = (element) => [element.textContent, ...element.children.map(text)].j
   assert.equal(elements.get('btn-lock-freeze').disabled, false);
   await event('btn-lock-freeze');
   assert.deepEqual(requests.find((request) => request.url.endsWith('/freeze')).body.resourceIDs, ['seat-1', 'seat-2']);
+  assert.equal(elements.get('room-selection-tools').hidden, true, 'Seat selection closes after a saved hold');
+  assert.equal(elements.get('room-canvas-empty-title').textContent, 'Places are held for this group.');
+  assert.equal(elements.get('room-recheck').hidden, true, 'No redundant approval recheck before a saved order exists');
   await context.selectGroup('g1'); await settle();
   assert.equal(elements.get('quote-display-total').textContent, '32.00 USD', 'Reload restores saved reservation money');
   assert.equal(elements.get('interactive-seat-map').children.length, 2, 'Reload restores the reserved experience canvas');
