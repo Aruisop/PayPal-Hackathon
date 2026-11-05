@@ -1,8 +1,11 @@
 """Persistent member chat and coarse coordination; no payment or model actions."""
+import hashlib
+import json
 import time
 from sqlalchemy import and_, insert, or_, select
 
 from app.planning.interpreter import AIError
+from .journey import journey
 from app.shared.storage import (group_member_preferences, group_member_profiles, group_memberships,
                      group_workflows, identifier, room_messages, shared_purchases, workshop_groups)
 
@@ -58,9 +61,11 @@ class Room:
                     room_messages.c.created_at == cursor['created_at'], room_messages.c.id > cursor['id'])))
             rows = connection.execute(query.order_by(room_messages.c.created_at.desc(),
                 room_messages.c.id.desc()).limit(51)).mappings().all()
-            confirmed = set(connection.execute(select(group_member_preferences.c.participant_id).where(
-                group_member_preferences.c.group_id == group_id,
-                group_member_preferences.c.is_confirmed == 1)).scalars())
+            preferences = connection.execute(select(group_member_preferences.c.participant_id,
+                group_member_preferences.c.updated_at, group_member_preferences.c.is_confirmed).where(
+                group_member_preferences.c.group_id == group_id).order_by(group_member_preferences.c.participant_id)).all()
+            confirmed = {row.participant_id for row in preferences if row.is_confirmed}
+            planning_version = hashlib.sha256(json.dumps([tuple(row) for row in preferences]).encode()).hexdigest()
             confirmed.intersection_update(members)
             purchase = connection.execute(select(shared_purchases).where(
                 shared_purchases.c.group_id == group_id).order_by(
@@ -87,5 +92,9 @@ class Room:
             return dict(groupID=group_id, messages=[self._message(row, participant_id, aliases) for row in reversed(rows[:50])],
                         memberCount=len(members), confirmedCount=len(confirmed), phase=phase, roster=roster,
                         unconfirmedMembers=[aliases[pid] for pid in members if pid not in confirmed],
-                        nextAction=actions.get(phase, 'Review the current booking status.'), truncated=len(rows) > 50)
+                        nextAction=actions.get(phase, 'Review the current booking status.'), truncated=len(rows) > 50,
+                        planningVersion=planning_version,
+                        journey=journey(phase, member_count=len(members), confirmed_count=len(confirmed),
+                                        own_confirmed=participant_id in confirmed,
+                                        organizer=participant_id == group['organizer_id']))
 

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import (Column, Float, ForeignKey, Integer, MetaData, String, Table,
-                        UniqueConstraint, create_engine, event, insert, select)
+                        UniqueConstraint, create_engine, event, insert, select, update)
 
 metadata = MetaData()
 versions = Table('schema_versions', metadata, Column('id', Integer, primary_key=True),
@@ -44,6 +44,13 @@ workshop_groups = Table('workshop_groups', metadata,
     Column('organizer_id', ForeignKey('participants.id'), nullable=False),
     Column('invite_token', String(64), unique=True, nullable=False),
     Column('workshop_id', ForeignKey('workshops.id')),
+    # Revision 6: a focused merchant checkout pins its intended roster and
+    # trusted catalog offer before an invite is shared.
+    Column('checkout_mode', String(20), nullable=False, default='planning'),
+    Column('target_member_count', Integer),
+    # Kept as an ID rather than a FK because Slice 2 databases may apply this
+    # table before the Slice 3 catalog exists.
+    Column('merchant_offer_id', String(64)),
     Column('created_at', Float, nullable=False))
 group_memberships = Table('group_memberships', metadata,
     Column('id', String(40), primary_key=True),
@@ -184,6 +191,79 @@ room_messages = Table('room_messages', metadata,
     Column('text', String(1000), nullable=False),
     Column('created_at', Float, nullable=False))
 
+# Revision 6: informal expense splitting. These are IOU-style personal ledgers,
+# never PayPal-authoritative money. No table here can grant inventory, tickets
+# or payment state; settlement is a manual, participant-confirmed note only.
+expense_profiles = Table('expense_profiles', metadata,
+    Column('participant_id', ForeignKey('participants.id'), primary_key=True),
+    Column('display_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('updated_at', Float, nullable=False))
+
+expense_friends = Table('expense_friends', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('owner_id', ForeignKey('participants.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('whatsapp', String(40), nullable=False, default=''),
+    Column('created_at', Float, nullable=False),
+    UniqueConstraint('owner_id', 'name', name='uq_expense_friend_owner_name'))
+
+expense_splits = Table('expense_splits', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('owner_id', ForeignKey('participants.id'), nullable=False, index=True),
+    Column('group_id', ForeignKey('workshop_groups.id'), nullable=True),
+    Column('title', String(160), nullable=False),
+    Column('category', String(20), nullable=False, default='other'),
+    Column('total_minor', Integer, nullable=False),
+    Column('currency', String(3), nullable=False, default='USD'),
+    Column('source', String(10), nullable=False, default='manual'),
+    Column('receipt_meta_json', String(2000), nullable=False, default='{}'),
+    Column('created_at', Float, nullable=False))
+
+expense_shares = Table('expense_shares', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('split_id', ForeignKey('expense_splits.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('amount_minor', Integer, nullable=False),
+    Column('is_payer', Integer, nullable=False, default=0),
+    Column('settled', Integer, nullable=False, default=0),
+    Column('settled_at', Float, nullable=True))
+
+expense_subscriptions = Table('expense_subscriptions', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('owner_id', ForeignKey('participants.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('monthly_amount_minor', Integer, nullable=False),
+    Column('currency', String(3), nullable=False, default='USD'),
+    Column('billing_day', Integer, nullable=False),
+    Column('created_at', Float, nullable=False))
+
+expense_subscription_participants = Table('expense_subscription_participants', metadata,
+    Column('id', String(40), primary_key=True),
+    Column('subscription_id', ForeignKey('expense_subscriptions.id'), nullable=False, index=True),
+    Column('name', String(80), nullable=False),
+    Column('whatsapp', String(40), nullable=False, default=''))
+
+# Revision 7: contact snapshots for new ledger shares. Historical name-only
+# shares stay untouched; a deleted contact cannot silently redirect a reminder.
+expense_share_contacts = Table('expense_share_contacts', metadata,
+    Column('share_id', ForeignKey('expense_shares.id'), primary_key=True),
+    Column('friend_id', String(40), nullable=False),
+    Column('whatsapp', String(40), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''))
+
+expense_split_payees = Table('expense_split_payees', metadata,
+    Column('split_id', ForeignKey('expense_splits.id'), primary_key=True),
+    Column('host_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''),
+    Column('paypal_email', String(160), nullable=False, default=''))
+
+expense_subscription_details = Table('expense_subscription_details', metadata,
+    Column('subscription_id', ForeignKey('expense_subscriptions.id'), primary_key=True),
+    Column('host_name', String(80), nullable=False, default=''),
+    Column('upi_id', String(80), nullable=False, default=''))
+
 
 def identifier():
     return secrets.token_hex(16)
@@ -235,8 +315,8 @@ class Store:
     def migrate(self, target=2):
         # Target defaults to 2 to preserve Slice 2 backward compatibility contract.
         from sqlalchemy import inspect
-        if target not in (2, 3, 4, 5):
-            raise ValueError('Supported migration targets are 2, 3, 4 and 5')
+        if target not in (2, 3, 4, 5, 6, 7, 8):
+            raise ValueError('Supported migration targets are 2 through 8')
         if 'schema_versions' in inspect(self.engine).get_table_names():
             with self.engine.begin() as connection:
                 revision = connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar()
@@ -270,7 +350,54 @@ class Store:
                     room_messages.create(connection, checkfirst=True)
                     revision = 5
                     connection.execute(versions.update().where(versions.c.id == 1).values(revision=5))
-                if revision not in (2, 3, 4, 5):
+                if revision == 5 and target >= 6:
+                    # SQLAlchemy's create(checkfirst=True) does not add columns
+                    # to an applied table. This additive revision leaves all
+                    # historical groups and financial records untouched.
+                    columns = {column['name'] for column in inspect(connection).get_columns('workshop_groups')}
+                    if 'checkout_mode' not in columns:
+                        connection.exec_driver_sql("ALTER TABLE workshop_groups ADD COLUMN checkout_mode VARCHAR(20) NOT NULL DEFAULT 'planning'")
+                    if 'target_member_count' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN target_member_count INTEGER')
+                    if 'merchant_offer_id' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN merchant_offer_id VARCHAR(64)')
+                    revision = 6
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=6))
+                if revision == 6 and target >= 7:
+                    # Revision 7 adds expenses after the merchant-checkout v6.
+                    # It also repairs the briefly published expense-only v6 shape
+                    # without rewriting its applied revision.
+                    columns = {column['name'] for column in inspect(connection).get_columns('workshop_groups')}
+                    if 'checkout_mode' not in columns:
+                        connection.exec_driver_sql("ALTER TABLE workshop_groups ADD COLUMN checkout_mode VARCHAR(20) NOT NULL DEFAULT 'planning'")
+                    if 'target_member_count' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN target_member_count INTEGER')
+                    if 'merchant_offer_id' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN merchant_offer_id VARCHAR(64)')
+                    expense_profiles.create(connection, checkfirst=True)
+                    expense_friends.create(connection, checkfirst=True)
+                    expense_splits.create(connection, checkfirst=True)
+                    expense_shares.create(connection, checkfirst=True)
+                    expense_subscriptions.create(connection, checkfirst=True)
+                    expense_subscription_participants.create(connection, checkfirst=True)
+                    revision = 7
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=7))
+                if revision == 7 and target >= 8:
+                    # A local expense-only revision 7 also existed before
+                    # integration. Complete the merchant columns if absent.
+                    columns = {column['name'] for column in inspect(connection).get_columns('workshop_groups')}
+                    if 'checkout_mode' not in columns:
+                        connection.exec_driver_sql("ALTER TABLE workshop_groups ADD COLUMN checkout_mode VARCHAR(20) NOT NULL DEFAULT 'planning'")
+                    if 'target_member_count' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN target_member_count INTEGER')
+                    if 'merchant_offer_id' not in columns:
+                        connection.exec_driver_sql('ALTER TABLE workshop_groups ADD COLUMN merchant_offer_id VARCHAR(64)')
+                    expense_share_contacts.create(connection, checkfirst=True)
+                    expense_split_payees.create(connection, checkfirst=True)
+                    expense_subscription_details.create(connection, checkfirst=True)
+                    revision = 8
+                    connection.execute(versions.update().where(versions.c.id == 1).values(revision=8))
+                if revision not in (2, 3, 4, 5, 6, 7, 8):
                     raise RuntimeError('Unsupported database revision; run the documented migration')
             return
         tables = [versions, participants, workshops, bookings, attempts, entitlements,
@@ -282,6 +409,11 @@ class Store:
             tables += [group_workflows, group_operations]
         if target >= 5:
             tables += [room_messages]
+        if target >= 7:
+            tables += [expense_profiles, expense_friends, expense_splits, expense_shares,
+                       expense_subscriptions, expense_subscription_participants]
+        if target >= 8:
+            tables += [expense_share_contacts, expense_split_payees, expense_subscription_details]
         metadata.create_all(self.engine, tables=tables)
         with self.engine.begin() as connection:
             connection.execute(insert(versions).values(id=1, revision=target))
@@ -310,6 +442,18 @@ class Store:
             # Seed collaborative booking catalog if table exists and is empty
             # Check before selecting: catching a missing-table error leaves a
             # PostgreSQL transaction aborted, even when Python catches it.
+            if inspect(connection).has_table('catalog_offers'):
+                # Development convenience (seed() never runs in production): a database older than its
+                # sample sessions would show an empty catalog, so roll fully elapsed sessions forward by whole
+                # weeks. Weekday and time are preserved; resources, prices and merchants are untouched.
+                now = datetime.now(timezone.utc)
+                stored = connection.execute(select(catalog_offers.c.id, catalog_offers.c.schedule_time)).all()
+                parsed = [(oid, datetime.fromisoformat(stamp.replace('Z', '+00:00'))) for oid, stamp in stored]
+                if parsed and all(moment <= now for _, moment in parsed):
+                    for oid, moment in parsed:
+                        weeks = (now - moment).days // 7 + 1
+                        connection.execute(update(catalog_offers).where(catalog_offers.c.id == oid).values(
+                            schedule_time=(moment + timedelta(weeks=weeks)).isoformat()))
             has_offers = (not inspect(connection).has_table('catalog_offers') or
                           bool(connection.execute(select(catalog_offers.c.id).limit(1)).first()))
             if not has_offers:

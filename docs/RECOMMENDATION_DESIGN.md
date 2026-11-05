@@ -57,8 +57,8 @@ From ppl-hxn, install requirements-ai.txt and prepare the BGE model, then restar
 
 ```powershell
 ..\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt
-..\.venv\Scripts\python.exe -B model_assets.py prepare --model bge
-..\.venv\Scripts\python.exe -B model_assets.py prepare --model minilm
+..\.venv\Scripts\python.exe -B -m app.recommendations.assets prepare --model bge
+..\.venv\Scripts\python.exe -B -m app.recommendations.assets prepare --model minilm
 ..\.venv\Scripts\python.exe -B evaluation/benchmark_recommendations.py --model all --repeats 5 --http
 ```
 

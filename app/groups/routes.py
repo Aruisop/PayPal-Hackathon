@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, g, jsonify, make_response, request
 
 from app.planning.interpreter import AIError, PreferenceInterpreter
 from app.shared.errors import BookingError
+from app.planning.catalog import availability
 blueprint = Blueprint('groups', __name__)
 
 
@@ -48,6 +49,16 @@ def my_groups():
 def create_group():
     body = request.get_json()
     return jsonify(_extension('groups').create(g.participant['id'], body.get('name') if isinstance(body, dict) else None))
+
+
+@blueprint.post('/api/merchant-checkouts')
+def create_merchant_checkout():
+    body = request.get_json()
+    if not isinstance(body, dict):
+        raise BookingError('INVALID_MERCHANT_CHECKOUT', 400)
+    return jsonify(_extension('groups').create_merchant_checkout(
+        g.participant['id'], body.get('offerID'), body.get('payerCount')
+    ))
 
 
 @blueprint.post('/api/groups/join')
@@ -95,6 +106,17 @@ def send_room_message(group_id):
     return jsonify(_extension('room').post_message(g.participant['id'], group_id, body.get('text') if isinstance(body, dict) else None))
 
 
+@blueprint.post('/api/groups/<group_id>/assistant/chat')
+def contextual_group_chat(group_id):
+    body = request.get_json()
+    if not isinstance(body, dict):
+        raise AIError('INVALID_REQUEST')
+    return jsonify(_extension('assistant').chat(
+        g.participant['id'], group_id, body.get('prompt'), body.get('domain', 'movie'),
+        body.get('objective', 'compromise'), body.get('history')
+    ))
+
+
 @blueprint.post('/api/groups/<group_id>/selection')
 def select_group_workshop(group_id):
     body = request.get_json()
@@ -105,7 +127,10 @@ def select_group_workshop(group_id):
 
 @blueprint.get('/api/catalog/offers')
 def get_offers():
-    return jsonify(offers=_extension('store').offers(request.args.get('domain')))
+    domain = request.args.get('domain')
+    if domain is not None and domain not in ('movie', 'excursion'):
+        raise AIError('INVALID_DOMAIN')
+    return jsonify(availability(_extension('store').offers(domain)))
 
 
 @blueprint.post('/api/groups/<group_id>/profile')
@@ -132,6 +157,11 @@ def freeze_group(group_id):
     if not isinstance(body, dict) or not body.get('offerID'):
         raise BookingError('OFFER_REQUIRED', 400)
     return jsonify(_extension('booking').freeze(g.participant['id'], group_id, body.get('offerID'), body.get('resourceIDs')))
+
+
+@blueprint.post('/api/groups/<group_id>/merchant-freeze')
+def freeze_merchant_checkout(group_id):
+    return jsonify(_extension('booking').freeze_merchant_checkout(g.participant['id'], group_id))
 
 
 @blueprint.get('/api/groups/<group_id>/booking')

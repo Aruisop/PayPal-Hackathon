@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
-from app.shared.storage import bookings, group_memberships, identifier, workshop_groups, workshops
+from app.shared.storage import (bookings, catalog_offers, catalog_resources, group_memberships,
+                                identifier, workshop_groups, workshops)
 
 
 class GroupError(Exception):
@@ -26,7 +27,28 @@ class Groups:
         with self.store.engine.begin() as connection:
             connection.execute(insert(workshop_groups).values(id=group_id, name=name.strip(),
                 organizer_id=participant_id, invite_token=secrets.token_urlsafe(32),
-                workshop_id=None, created_at=now))
+                workshop_id=None, checkout_mode='planning', target_member_count=None,
+                merchant_offer_id=None, created_at=now))
+            connection.execute(insert(group_memberships).values(id=identifier(), group_id=group_id,
+                participant_id=participant_id, joined_at=now))
+        return self.view(participant_id, group_id)
+
+    def create_merchant_checkout(self, participant_id, offer_id, payer_count):
+        """Start a compact checkout around a trusted catalog offer only."""
+        if not isinstance(offer_id, str) or type(payer_count) is not int or not 1 <= payer_count <= 4:
+            raise GroupError('INVALID_MERCHANT_CHECKOUT', 400)
+        group_id, now = identifier(), time.time()
+        with self.store.engine.begin() as connection:
+            offer = connection.execute(select(catalog_offers).where(catalog_offers.c.id == offer_id)).mappings().first()
+            if not offer or offer['currency'] != 'USD' or datetime.fromisoformat(offer['schedule_time']).astimezone(timezone.utc) <= datetime.now(timezone.utc):
+                raise GroupError('MERCHANT_OFFER_UNAVAILABLE', 409)
+            available = connection.execute(select(func.count()).select_from(catalog_resources).where(
+                catalog_resources.c.offer_id == offer_id, catalog_resources.c.state == 'FREE')).scalar_one()
+            if available < payer_count:
+                raise GroupError('MERCHANT_INVENTORY_UNAVAILABLE', 409)
+            connection.execute(insert(workshop_groups).values(id=group_id, name=f"Checkout · {offer['title']}",
+                organizer_id=participant_id, invite_token=secrets.token_urlsafe(32), workshop_id=None,
+                checkout_mode='merchant', target_member_count=payer_count, merchant_offer_id=offer_id, created_at=now))
             connection.execute(insert(group_memberships).values(id=identifier(), group_id=group_id,
                 participant_id=participant_id, joined_at=now))
         return self.view(participant_id, group_id)
@@ -56,7 +78,9 @@ class Groups:
                         raise GroupError('ROSTER_FROZEN', 409)
                     count = connection.execute(select(func.count()).select_from(group_memberships).where(
                         group_memberships.c.group_id == group_id)).scalar_one()
-                    if count >= 4:
+                    target = connection.execute(select(workshop_groups.c.target_member_count).where(
+                        workshop_groups.c.id == group_id)).scalar()
+                    if count >= (target or 4):
                         raise GroupError('GROUP_MAX_CAPACITY', 409)
                     connection.execute(insert(group_memberships).values(id=identifier(), group_id=group_id,
                         participant_id=participant_id, joined_at=time.time()))
@@ -103,12 +127,22 @@ class Groups:
                     or ('Organizer' if row['participant_id'] == group['organizer_id'] else f'Member {index + 1}'),
                 isOrganizer=row['participant_id'] == group['organizer_id']) for index, row in enumerate(member_rows)]
             profile = next(row for row in member_rows if row['participant_id'] == participant_id)
+            merchant_checkout = None
+            if group['checkout_mode'] == 'merchant':
+                offer = connection.execute(select(catalog_offers).where(
+                    catalog_offers.c.id == group['merchant_offer_id'])).mappings().one()
+                merchant_total = offer['price_minor'] * group['target_member_count'] if offer['domain'] == 'movie' else offer['price_minor']
+                merchant_checkout = dict(offerID=offer['id'], title=offer['title'],
+                    merchantID=offer['merchant_id'], totalCents=merchant_total, currency=offer['currency'],
+                    targetMemberCount=group['target_member_count'], readyToFreeze=count == group['target_member_count'])
         own_booking = self.checkout.view(participant_id, booking_id) if booking_id else None
         organizer = group['organizer_id'] == participant_id
         result = dict(id=group_id, name=group['name'], role='organizer' if organizer else 'member',
             memberCount=count, workshopID=group['workshop_id'], myBooking=own_booking,
             members=members_data, myProfile=dict(alias=profile['alias'] or '',
                 shareProgress=bool(profile['consent_coarse_progress'])))
+        if merchant_checkout:
+            result['merchantCheckout'] = merchant_checkout
         if organizer:
             result['inviteURL'] = f'{self.origin}/?invite={group["invite_token"]}'
         return result

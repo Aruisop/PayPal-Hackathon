@@ -3,9 +3,11 @@
   <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#17233c"><title>GroupPay - good plans, together</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"></noscript>
     <link rel="stylesheet" href="/style.css">
-    <script src="/ai.js" defer>
-    </script>
     <script src="/discovery.js" defer>
     </script>
     <script src="/guide.js" defer>
@@ -13,6 +15,9 @@
     <script src="/demo.js" defer>
     </script>
     <script src="/room.js" defer>
+    </script>
+    <script src="/merchant.js" defer>
+    <script src="/expenses.js" defer>
     </script>
     <script src="/app.js" defer>
     </script>
@@ -23,15 +28,16 @@
       <a href="/" id="brand-home-link" class="brand-logo"><span class="brand-mark">g<span>p</span></span><span>group<span class="brand-light">pay</span><small>GOOD PLANS, TOGETHER.</small></span></a>
       <p class="nav-label">YOUR SPACE</p>
       <nav class="app-tabs" aria-label="Main navigation">
-        <button id="tab-discover" type="button" class="tab-btn active" aria-current="page"><span class="nav-icon">&#9672;</span> Discover <span class="nav-arrow">&#8599;</span></button>
+        <a id="tab-discover" href="/" class="tab-btn active" aria-current="page"><span class="nav-icon">&#9672;</span> Discover <span class="nav-arrow">&#8599;</span></a>
         <button id="tab-groups" type="button" class="tab-btn"><span class="nav-icon">&#9707;</span> My groups <span id="my-groups-count" class="nav-count">0</span></button>
         <button id="tab-collab" type="button" class="tab-btn"><span class="nav-icon">&#9678;</span> Group room <i id="active-group-dot" style="display:none"></i></button>
-        <button id="tab-workshop" type="button" class="tab-btn"><span class="nav-icon">&#9636;</span> Workshops</button>
+        <button id="tab-expenses" type="button" class="tab-btn"><span class="nav-icon">&#8942;</span> Bills &amp; splits</button>
       </nav>
       <div class="rail-divider">
       </div>
       <p class="nav-label">TRY THE IDEA</p>
       <button id="tab-lab" class="tab-btn" type="button"><span class="nav-icon">&#10023;</span> Solo demo lab</button>
+      <button id="tab-workshop" type="button" class="tab-btn" title="Standalone PayPal capture and lesson-unlock demo"><span class="nav-icon">&#9636;</span> Workshop demo</button>
       <div class="rail-card"><span class="rail-card-icon">&#10022;</span>
         <h3>Your people.<br>Your own payment.</h3>
         <p>A shared plan without one friend fronting the bill.</p>
@@ -91,33 +97,34 @@
           </div>
         </section>
         <section class="how-strip" aria-label="How group booking works">
-          <div><b>01</b><span><strong>Gather your people</strong><small>A private room and one invite.</small></span>
+          <div><b>01</b><span><strong>Invite each person</strong><small>One link; each joins in their own browser profile.</small></span>
           </div>
           <span class="strip-arrow">&#8594;</span>
-          <div><b>02</b><span><strong>Find the common ground</strong><small>Preferences become a real plan.</small></span>
+          <div><b>02</b><span><strong>Confirm and compare</strong><small>Each confirms budget, timing and likes; the organizer picks.</small></span>
           </div>
           <span class="strip-arrow">&#8594;</span>
-          <div><b>03</b><span><strong>Approve your own share</strong><small>Tickets after everyone completes.</small></span>
+          <div><b>03</b><span><strong>Approve your own share</strong><small>See exact amounts; each buyer approves in PayPal Sandbox.</small></span>
           </div>
         </section>
-        <section class="scout-card" aria-labelledby="scout-title">
-          <div class="scout-heading"><span class="ai-symbol">&#10022;</span>
+        <section class="home-paths" aria-label="Choose what to do">
+          <div><strong>See the journey first</strong><p>Try three fictional friends, preference matching, shared selection and simulated payment steps.</p><button id="hero-demo-btn" class="btn btn-outline" type="button">Try the guided demo &rarr;</button></div>
+          <div><strong>Already paid a bill?</strong><p>Splits tracks contacts, receipts and repayments. It is a personal ledger; it does not run PayPal checkout.</p><button id="hero-splits-btn" class="btn btn-outline" type="button">Open Splits &rarr;</button></div>
+        </section>
+        <section class="catalog-search-card" aria-labelledby="catalog-search-title">
+          <div class="catalog-search-heading"><span class="ai-symbol" aria-hidden="true">&#8981;</span>
             <div>
-              <p class="eyebrow">YOUR PRIVATE AI SCOUT</p>
-              <h2 id="scout-title">Start with a vibe, not a spreadsheet.</h2>
-              <p>Try &ldquo;a calm escape outdoors&rdquo; or &ldquo;an immersive sci-fi night&rdquo;.</p>
+              <p class="eyebrow">FIND AN EXPERIENCE</p>
+              <h2 id="catalog-search-title">Find an experience for your group.</h2>
+              <p>Search by title, genre, or description.</p>
             </div>
-            <button id="scout-enable" class="btn btn-ink" type="button">Enable on-device AI</button>
           </div>
-          <form id="scout-form" class="scout-form">
-            <label class="sr-only" for="scout-query">Describe the experience you want</label>
-            <span class="search-glyph" aria-hidden="true">&#8981;</span><input id="scout-query" maxlength="1000" placeholder="What kind of moment are you looking for?" autocomplete="off"><button class="btn btn-primary">Find my vibe <span>&#8594;</span></button>
+          <form id="catalog-search-form" class="catalog-search-form">
+            <label class="sr-only" for="catalog-search-query">Search by title, genre or description</label>
+            <span class="search-glyph" aria-hidden="true">&#8981;</span><input id="catalog-search-query" maxlength="1000" placeholder="e.g. science fiction" autocomplete="off"><button class="btn btn-primary">Search <span>&#8594;</span></button>
           </form>
-          <div class="scout-bottom">
-            <p id="scout-status" role="status" aria-live="polite">Basic search is ready. Optional AI downloads a ~23 MB model plus runtime; your search text stays on your device.</p>
-            <button id="scout-clear" type="button" class="text-button">Clear search</button>
-          </div>
-          <div class="scout-prompts"><button type="button" data-vibe="An immersive science fiction movie with friends">Space &amp; big-screen stories</button><button type="button" data-vibe="A peaceful outdoor river adventure">Fresh air &amp; a little adventure</button><button type="button" data-vibe="A funny lighthearted movie night">Something fun and easy</button>
+          <div class="catalog-search-status">
+            <p id="catalog-search-message" role="status" aria-live="polite">Cinema and Outdoor are filters you choose. People and budget preview the catalog; the room checks each person's confirmed limits.</p>
+            <button id="catalog-search-clear" type="button" class="text-button">Clear search</button>
           </div>
         </section>
         <section class="catalog-section">
@@ -133,9 +140,9 @@
             <p id="discover-tz-notice" class="fine">
             </p>
             <div class="compact-fields">
-              <label for="scout-people">People<select id="scout-people"><option>2</option><option selected>3</option><option>4</option></select>
+              <label for="catalog-people">People<select id="catalog-people"><option>2</option><option selected>3</option><option>4</option></select>
               </label>
-              <label for="scout-budget">Max per person (USD)<input id="scout-budget" type="number" min="0" step="0.01" placeholder="Flexible">
+              <label for="catalog-budget">Max per person (USD)<input id="catalog-budget" type="number" min="0" step="0.01" placeholder="Flexible">
               </label>
             </div>
           </div>
@@ -159,6 +166,17 @@
         <div id="my-groups-container" class="group-grid">
         </div>
       </main>
+      <main id="merchant-view" class="view-panel" hidden tabindex="-1">
+        <section class="merchant-checkout" aria-labelledby="merchant-title">
+          <button id="merchant-back" class="text-button" type="button">← Continue browsing</button>
+          <p class="eyebrow">FICTIONAL MERCHANT CHECKOUT</p>
+          <h1 id="merchant-title">Checkout</h1>
+          <p id="merchant-description" class="fine">Choose how you would like to pay.</p>
+          <div id="merchant-order-summary" class="merchant-summary"></div>
+          <section id="merchant-choice" class="merchant-choice" aria-label="Payment choices"></section>
+          <section id="merchant-group-status" class="merchant-status" aria-live="polite"></section>
+        </section>
+      </main>
       <main id="collab-view" class="view-panel" hidden>
         <div class="room-heading">
           <div><button id="btn-back-to-groups" class="text-button" type="button">&#8592; My groups</button>
@@ -169,7 +187,7 @@
           <div class="room-roster-ctrl"><span id="room-roster-count" class="fine"></span>
             <div id="room-roster-avatars" class="roster-avatar-row">
             </div>
-            <button id="copy-invite-btn" class="btn btn-outline" type="button">Copy invite &#8599;</button><button id="btn-add-friend-demo" class="text-button" type="button">Testing solo?</button>
+            <button id="copy-invite-btn" class="btn btn-outline" type="button">Copy invite link</button><button id="btn-add-friend-demo" class="text-button" type="button">Testing solo?</button>
           </div>
         </div>
         <ol class="room-journey" aria-label="Booking progress">
@@ -182,9 +200,10 @@
           <li id="room-step-4"><b>4</b><span>Go<small>Your private ticket</small></span>
           </li>
         </ol>
-        <section class="room-next-card"><span class="next-icon">&#8599;</span>
+        <section class="room-next-card">
           <div>
             <p class="eyebrow">HERE'S YOUR NEXT MOVE</p>
+            <h2 id="room-journey-title">One plan. Everyone gets a say.</h2>
             <p id="room-next-action">Create or join a group to get started.</p>
             <p id="room-readiness" class="fine">
             </p>
@@ -204,17 +223,28 @@
             <button class="btn btn-outline">Save profile</button>
           </form>
         </details>
+        <section class="decision-brief" aria-label="Your common ground at a glance">
+          <div class="brief-intro"><p class="eyebrow">YOUR COMMON GROUND</p><p id="room-starting-point">A shared decision, with each person's limits respected.</p></div>
+          <div><span>Preferences confirmed</span><strong id="brief-confirmed">0 / 0</strong></div>
+          <div><span>Last checked matches</span><strong id="brief-choices">Not checked</strong></div>
+          <div><span>How we compared</span><strong id="brief-method">Not compared yet</strong></div>
+        </section>
         <div class="room-workspace">
           <div class="planning-column">
             <section class="room-panel room-chat-panel">
               <div class="panel-header"><span class="ai-symbol">&#10022;</span>
                 <div>
                   <p class="eyebrow">ONLY YOU CAN SEE THIS</p>
-                  <h2>Your planning space</h2>
+                  <h2>Make room for everyone.</h2>
                 </div>
                 <button id="open-ai-guardrails-btn" class="text-button" type="button">How it decides</button>
               </div>
               <div id="room-planning-controls">
+                <div class="planner-tabs" role="group" aria-label="Planning stages">
+                  <button id="room-show-preferences" type="button" aria-pressed="true" aria-controls="room-preferences-stage">1. My preferences</button>
+                  <button id="room-show-comparison" type="button" aria-pressed="false" aria-controls="room-comparison-stage">2. Compare our plans</button>
+                </div>
+                <div id="room-preferences-stage">
                 <p id="room-planning-mode" class="mode-note">
                 </p>
                 <div id="chat-messages-container" class="chat-stream" aria-live="polite">
@@ -223,6 +253,7 @@
                   <label class="sr-only" for="chat-input-text">Your private preferences</label>
                   <input id="chat-input-text" maxlength="1000" required placeholder="I'd love a movie, any day, under $20..."><button class="btn btn-primary">Make it a plan &#8594;</button>
                 </form>
+                <p class="fine concierge-hint">Describe what you enjoy, your budget and your days. Review the suggested fields before saving. Questions about progress go to the Context Copilot below.</p>
                 <div class="chat-presets-bar"><button class="chip-preset" data-text="Any day and time, budget under $20 per person" type="button">Flexible, under $20</button><button class="chip-preset" data-text="An outdoor adventure, any day and time, under $40 per person" type="button">An outdoor escape</button><button class="chip-preset" data-text="Any day and time, flexible budget" type="button">I'm flexible</button>
                 </div>
                 <form id="room-preference-review" class="room-review" hidden>
@@ -232,7 +263,8 @@
                   <div class="room-field-grid">
                     <label for="pref-budget">Your budget per person (USD)<input id="pref-budget" inputmode="decimal" placeholder="Flexible">
                     </label>
-                    <label for="pref-days">Days that work<input id="pref-days" placeholder="Any day, or friday, saturday">
+                    <label for="pref-days">Days that work<input id="pref-days" placeholder="Blank for any day, or Friday, Saturday">
+                      <small>Use weekday names separated by commas. Leave blank if every day works.</small>
                     </label>
                     <label for="pref-soft" class="room-taste-field">What would make it your kind of experience?<input id="pref-soft" placeholder="science fiction, scenic hiking..." maxlength="1000">
                       <small>Optional likes, separated by commas. Confirm them to inform group AI. Exclusions, allergies and accessibility requirements cannot be enforced through this field.</small>
@@ -258,23 +290,28 @@
                   <p class="fine">Nothing changes until you confirm. Blank fields mean flexible.</p>
                   <button class="btn btn-primary btn-block">Yes, these are my preferences &#10003;</button>
                 </form>
+                </div>
+                <div id="room-comparison-stage" hidden>
+                <div class="comparison-intro"><p class="eyebrow">FIRST THE FIT. THEN THE FEEL.</p><h3>Turn everyone's preferences into a plan.</h3><p id="room-comparison-readiness">Everyone confirms privately before we compare. You can return to your own preferences at any time.</p></div>
                 <div class="room-match-toolbar">
                   <label for="room-domain">Let's explore<select id="room-domain"><option value="movie">Cinema nights</option><option value="excursion">Outdoor escapes</option></select>
                   </label>
-                  <button id="room-find-matches" class="btn btn-ink" type="button">Find our common ground &#8594;</button>
                 </div>
+                <p id="room-catalog-status" class="fine" role="status" aria-live="polite"></p>
                 <section class="room-ai-panel" aria-labelledby="room-ai-title">
                   <p class="eyebrow">A PLAN WITH EVERYONE IN MIND</p>
-                  <h3 id="room-ai-title">Make the compromise visible.</h3>
-                  <p>First we verify every confirmed budget, time and place constraint. A local AI model then compares two ways to rank the eligible plans. Neither is a measure of happiness. Private likes stay on this server; no peer text or scores are shown.</p>
-                  <label for="room-ai-objective">How should we compare?<select id="room-ai-objective"><option value="compromise">Smallest worst modeled compromise</option><option value="average">Highest average modeled fit</option><option value="compare">Show both views, in schedule order</option></select></label>
+                  <h3 id="room-ai-title">A little help finding common ground.</h3>
+                  <p>We check everyone's confirmed limits first. Local AI then compares the experiences that fit, using the meaning of your confirmed likes.</p>
+                  <label for="room-ai-objective">How should we rank the plans?<select id="room-ai-objective"><option value="compromise">Keep it fair for everyone (recommended)</option><option value="average">Choose the strongest overall fit</option><option value="compare">Show both rankings side by side</option></select></label>
+                  <p id="room-ai-objective-hint" class="objective-hint">Protects the person making the biggest compromise, after budgets, dates, capacity and availability have already been checked.</p>
+                  <details class="comparison-explanation"><summary>What does the AI actually do?</summary><p>The balanced option minimizes the largest modeled loss relative to each person's best eligible choice. Average fit uses mean semantic similarity. These scores do not measure happiness or agreement. Private likes stay on this server; peer text and individual scores are not shared. People choose, reserve and approve for themselves.</p></details>
                   <button id="room-ai-recommend" class="btn btn-primary" type="button">Compare AI suggestions</button>
                   <p id="room-ai-ranking-note" class="fine" role="status" aria-live="polite"></p>
                   <div id="room-ai-actions" class="button-row"></div>
                 </section>
                 <div id="room-plan-results" class="room-matches" aria-live="polite">
                 </div>
-                <section class="rescue-card">
+                <section id="room-rescue-card" class="rescue-card">
                   <div class="rescue-heading"><span>&#10023;</span>
                     <div>
                       <p class="eyebrow">PLAN RESCUE</p>
@@ -282,14 +319,34 @@
                     </div>
                   </div>
                   <p>See what small edits to your own budget or timing could unlock. Everyone else's confirmed preferences stay intact.</p>
-                  <div class="button-row"><button id="room-rescue" class="btn btn-outline" type="button">Explore my tradeoffs &#8594;</button><button id="room-rescue-ai" class="text-button" type="button">Rank options with my AI vibe</button>
+                  <div class="button-row"><button id="room-rescue" class="btn btn-outline" type="button">Explore my tradeoffs &#8594;</button>
                   </div>
-                  <p id="rescue-mode" class="fine">Verified what-if calculations. Optional AI ranks the vibe; it cannot change anyone's limits.</p>
+                  <p id="rescue-mode" class="fine">Verified what-if calculations. Review each proposed change before confirming it.</p>
                   <div id="room-rescue-results" aria-live="polite">
                   </div>
                 </section>
+                </div>
               </div>
             </section>
+        <section class="room-panel room-agent-panel" aria-labelledby="room-agent-title">
+          <div class="panel-header"><span class="chat-icon">&#9678;</span>
+            <div>
+              <p class="eyebrow">CONTEXT COPILOT</p>
+              <h3 id="room-agent-title">Ask about this room, right now.</h3>
+            </div>
+            <span class="saved-pill">Grounded</span>
+          </div>
+          <p class="fine">Ask what to do next or why a plan is blocked. This assistant explains saved room details; it cannot change your plan or payment.</p>
+          <div class="chat-presets-bar" id="room-agent-quick-actions"><button id="room-agent-quick-next" class="chip-preset" type="button">What is our next best step?</button><button id="room-agent-quick-blockers" class="chip-preset" type="button">Why are we blocked right now?</button><button id="room-agent-quick-payment" class="chip-preset" type="button">What is our payment risk now?</button>
+          </div>
+          <div id="room-agent-feed" class="room-agent-feed" role="log" aria-live="polite" aria-label="Context assistant responses">
+          </div>
+          <form id="room-agent-form" class="chat-input-row">
+            <label class="sr-only" for="room-agent-input">Ask the contextual assistant</label>
+            <input id="room-agent-input" maxlength="1000" required placeholder="Ask: are we ready, what blocks us, what should we do next?"><button class="btn btn-outline">Ask assistant &#8594;</button>
+          </form>
+          <p id="room-agent-status" class="fine" role="status" aria-live="polite">Waiting for your question.</p>
+        </section>
             <section class="room-panel room-shared-chat">
               <div class="panel-header"><span class="chat-icon">&#9707;</span>
                 <div>
@@ -320,8 +377,8 @@
               <div id="room-canvas-empty" class="canvas-empty">
                 <div class="empty-seat-art" aria-hidden="true"><i></i><i></i><i></i>
                 </div>
-                <h3>Save a place for everyone.</h3>
-                <p>Once you find common ground, choose adjacent seats or adventure places here.</p>
+                <h3 id="room-canvas-empty-title">Save a place for everyone.</h3>
+                <p id="room-canvas-empty-detail">Once you find common ground, choose adjacent seats or adventure places here.</p>
               </div>
               <div id="room-selection-tools" hidden>
                 <div class="curved-screen-bar"><span id="seat-map-screen-text">YOUR CINEMA SEATS</span>
@@ -354,8 +411,8 @@
                 <label id="room-payment-policy" class="room-check"><input id="room-consent" type="checkbox"> I agree to my displayed share and cancellation terms. An incomplete group purchase may need refunds or voids, which can remain pending.</label>
                 <div id="group-paypal-buttons">
                 </div>
-                <p class="fine">Approve your own hold in PayPal's Sandbox window.</p>
-                <div class="room-payment-actions"><button id="room-recheck" class="btn btn-outline" type="button">Recheck my saved approval</button><button id="canvas-finalize-btn" class="btn btn-primary" type="button">Complete group capture &#8594;</button>
+                <p class="fine">PayPal Sandbox opens for your own authorization. The organizer captures only after everyone authorizes; tickets unlock after every capture completes.</p>
+                <div class="room-payment-actions"><button id="room-recheck" class="btn btn-outline" type="button" hidden>Check interrupted PayPal approval</button><button id="canvas-finalize-btn" class="btn btn-primary" type="button">Complete group capture &#8594;</button>
                   <details class="recovery-details">
                     <summary>Recovery &amp; cancellation</summary>
                     <button id="room-recover" class="btn btn-outline" type="button">Reconcile group recovery</button><button id="room-cancel" class="btn btn-danger" type="button">Cancel this reservation</button>
@@ -405,6 +462,9 @@
         <div id="collab-status-feed" class="status-feed" role="status" aria-live="polite">
         </div>
       </main>
+      <main id="expenses-view" class="view-panel" hidden>
+        <div id="expenses-root"></div>
+      </main>
       <main id="lab-view" class="view-panel" hidden>
         <div class="section-header page-intro">
           <div>
@@ -437,7 +497,7 @@
           <section class="catalog">
             <p class="eyebrow">A LITTLE TIME. A NEW SKILL.</p>
             <h1>Make room<br>for something new.</h1>
-            <p class="intro">Choose an online workshop and book your own place. Your sample lesson unlocks only after your payment completes.</p>
+            <p class="intro">An independent example of PayPal Sandbox checkout for one buyer. Choose an online workshop and book your own place; a sample lesson unlocks after verified capture. For a shared plan with individual payments, use Discover and Group room.</p>
             <p id="timezone" class="fine">
             </p>
             <div id="workshops" class="workshops" aria-label="Available workshops">
@@ -509,8 +569,8 @@
               <label for="create-group-name">Group Name</label>
               <input type="text" id="create-group-name" class="form-input" placeholder="e.g. Friday IMAX Squad, Tahoe Hikers" required maxlength="80">
             </div>
-            <div class="form-group">
-              <label for="create-group-offer-select">Choose Experience (or select later)</label>
+            <div class="form-group" hidden>
+              <label for="create-group-offer-select">Discovery starting point</label>
               <select id="create-group-offer-select" class="form-input">
                 <option value="">Decide together in group chat</option>
               </select>
@@ -651,5 +711,6 @@
         </div>
       </section>
     </div>
+    <div id="app-toast" class="app-toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
   </body>
 </html>

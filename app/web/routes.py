@@ -11,7 +11,7 @@ blueprint = Blueprint('web', __name__)
 def _asset(name, *, no_cache=False):
     response = make_response(send_from_directory(ROOT / 'public', name))
     if no_cache:
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Cache-Control'] = 'no-cache'
     return response
 
 
@@ -32,30 +32,24 @@ def stylesheet():
 
 @blueprint.get('/demo.js')
 def simulation_javascript():
-    return _asset('demo.js')
+    return _asset('demo.js', no_cache=True)
 
 
 @blueprint.get('/room.js')
 def room_javascript():
-    return _asset('room.js')
-
-
-@blueprint.get('/ai.js')
-def ai_javascript():
-    return _asset('ai.js')
+    return _asset('room.js', no_cache=True)
 
 
 @blueprint.get('/discovery.js')
 @blueprint.get('/guide.js')
+@blueprint.get('/merchant.js')
 def presentation_javascript():
-    return _asset(request.path[1:])
+    return _asset(request.path[1:], no_cache=True)
 
 
-@blueprint.get('/ai-worker.mjs')
-def ai_worker():
-    response = _asset('ai-worker.mjs')
-    response.mimetype = 'text/javascript'
-    return response
+@blueprint.get('/expenses.js')
+def expenses_javascript():
+    return _asset('expenses.js', no_cache=True)
 
 
 @blueprint.get('/lessons/<booking_id>')

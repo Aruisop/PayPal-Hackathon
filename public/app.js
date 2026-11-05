@@ -106,6 +106,44 @@ const SOUNDS = {
 // MULTI-PERSONA SIMULATOR DEFINITIONS
 // -------------------------------------------------------------
 let labDemo = null;
+let expensesMounted = false;
+let expensesHandle = null;
+let expensesLoading = false;
+let toastTimer = null;
+
+function showToast(message, tone = 'success') {
+  const toast = $('app-toast');
+  if (!toast) return;
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = `app-toast app-toast-${tone}`;
+  toast.hidden = false;
+  toast.classList.add('is-visible');
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('is-visible');
+    setTimeout(() => { toast.hidden = true; }, 180);
+  }, 3200);
+}
+window.GroupPayToast = showToast;
+
+function loadExpensesModule() {
+  if (expensesLoading) return;
+  expensesLoading = true;
+  const root = $('expenses-root');
+  if (root) root.replaceChildren(Object.assign(document.createElement('p'), {className: 'fine', textContent: 'Loading Bills & Splits…'}));
+  const script = document.createElement('script');
+  script.src = `/expenses.js?retry=${Date.now()}`;
+  script.onload = () => {
+    expensesLoading = false;
+    expensesMounted = false;
+    if (currentTab === 'expenses') switchTab('expenses');
+  };
+  script.onerror = () => {
+    expensesLoading = false;
+    if (root) root.replaceChildren(Object.assign(document.createElement('p'), {className: 'exp-error', textContent: 'Bills & Splits could not load. Check the connection, then refresh.'}));
+  };
+  document.head.append(script);
+}
 const DAG_NODE_INFO = {
   1: {title: 'Gather the group', badge: 'MEMBERSHIP', desc: 'Invites join a group. Each real participant keeps a separate browser session.', meta: 'Group API | Membership checks | Persistent roster'},
   2: {title: 'Confirm preferences', badge: 'PRIVATE REVIEW', desc: 'Members review their own structured preferences. A model or local parser cannot confirm for them.', meta: 'Planning API | Explicit confirmation | Private preferences'},
@@ -147,6 +185,9 @@ async function api(path, body) {
       PAYMENT_RECOVERY_REQUIRED: 'The payment outcome needs reconciliation. Recheck your saved order before another attempt.',
       ALL_AUTHORIZATIONS_REQUIRED: 'Every frozen member must approve their own share before capture.',
       ROSTER_ALREADY_FROZEN: 'This group already has a reservation. Complete it or reconcile cancellation before changing the plan.',
+      INVALID_PREFERRED_DAYS: 'Use weekday names such as Friday, Saturday, separated by commas. Leave the field blank for any day.',
+      INVALID_DATES: 'Use dates in YYYY-MM-DD format, separated by commas.',
+      INVALID_TIME_WINDOW: 'Check your start and finish times. The earliest start cannot be later than the latest start.',
     };
     const err = new Error(data.message || messages[data.error] || data.exactFailureCause || data.error || 'The request failed.');
     err.status = response.status;
@@ -177,6 +218,7 @@ function setupTabs() {
   $('tab-collab')?.addEventListener('click', () => switchTab('collab'));
   $('tab-lab')?.addEventListener('click', () => switchTab('lab'));
   $('tab-workshop')?.addEventListener('click', () => switchTab('workshop'));
+  $('tab-expenses')?.addEventListener('click', () => switchTab('expenses'));
 
   $('brand-home-link')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -188,16 +230,18 @@ function setupTabs() {
   $('hero-join-group-btn')?.addEventListener('click', () => openJoinGroupModal());
   $('groups-create-btn')?.addEventListener('click', () => openCreateGroupModal());
   $('groups-join-btn')?.addEventListener('click', () => openJoinGroupModal());
+  $('hero-demo-btn')?.addEventListener('click', () => runShowcaseDemo('happy_path', 'movie'));
+  $('hero-splits-btn')?.addEventListener('click', () => switchTab('expenses'));
 }
 
 function switchTab(tab) {
   currentTab = tab;
-  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', lab: 'Solo demo lab', workshop: 'Workshops'}[tab] || 'Discover';
+  $('page-label').textContent = {discover: 'Discover', groups: 'My groups', collab: 'Group room', merchant: 'Merchant checkout', lab: 'Solo demo lab', workshop: 'Workshop checkout demo', expenses: 'Bills & splits'}[tab] || 'Discover';
   SOUNDS.click();
 
-  const tabs = ['discover', 'groups', 'collab', 'lab', 'workshop'];
+  const tabs = ['discover', 'groups', 'collab', 'merchant', 'lab', 'workshop', 'expenses'];
   tabs.forEach((t) => {
-    const btn = $(`tab-${t}`);
+    const btn = t === 'merchant' ? null : $(`tab-${t}`);
     const view = $(`${t}-view`);
     const isActive = t === tab;
     if (btn) {
@@ -230,6 +274,21 @@ function switchTab(tab) {
     renderWorkshops();
     renderStatus();
     renderCheckout();
+  } else if (tab === 'expenses') {
+    try {
+      if (!window.GroupPayExpenses?.mount) { loadExpensesModule(); return; }
+      if (!expensesMounted) {
+        expensesMounted = true;
+        expensesHandle = window.GroupPayExpenses.mount($('expenses-root'), {api, escapeHtml, getCsrfToken: () => config?.csrfToken || ''});
+      } else if (expensesHandle && typeof expensesHandle.refresh === 'function') {
+        expensesHandle.refresh();
+      }
+    } catch (error) {
+      expensesMounted = false;
+      expensesHandle = null;
+      const root = $('expenses-root');
+      if (root) root.replaceChildren(Object.assign(document.createElement('p'), {className: 'exp-error', textContent: error.message || 'Bills & Splits could not load.'}));
+    }
   }
 }
 
@@ -266,7 +325,7 @@ function populateCreateGroupSelect() {
   const select = $('create-group-offer-select');
   if (!select) return;
   select.innerHTML = '<option value="">Decide together in your room</option>' +
-    catalogOffers.map((o) => `<option value="${o.id}">${escapeHtml(o.title)} ($${o.value} ${o.currency})</option>`).join('');
+    catalogOffers.filter((offer) => offer.availability ? offer.availability.status === 'available' : Date.parse(offer.scheduleTime) > Date.now()).map((o) => `<option value="${o.id}">${escapeHtml(o.title)} ($${o.value} ${o.currency} ${o.domain === 'movie' ? 'per person' : 'group total'})</option>`).join('');
 }
 
 // -------------------------------------------------------------
@@ -301,6 +360,7 @@ function renderMyGroups() {
 
   container.innerHTML = myGroups.map((grp) => {
     const isLead = grp.role === 'organizer';
+    const isMerchantCheckout = Boolean(grp.merchantCheckout);
     return `
       <div class="group-item-card" data-group-id="${grp.id}">
         <div class="group-item-header">
@@ -311,15 +371,15 @@ function renderMyGroups() {
           <span class="badge ${isLead ? 'badge-gold' : 'badge-sandbox'}">${isLead ? 'LEAD / ORGANIZER' : 'MEMBER'}</span>
         </div>
         <div class="group-item-meta">
-          <span>👥 ${grp.memberCount || grp.members?.length || 1} Members</span>
-          <span>⚡ Multi-Buyer PayPal Hold</span>
+          <span>${grp.memberCount || grp.members?.length || 1} Members</span>
+          <span>Each member approves their own share</span>
         </div>
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button type="button" class="btn btn-primary btn-sm btn-open-group" data-group-id="${grp.id}" style="flex:1;">
-            Open Group Room &rarr;
+            ${isMerchantCheckout ? 'Open merchant checkout' : 'Open Group Room'} &rarr;
           </button>
           <button type="button" class="btn btn-secondary btn-sm btn-copy-grp-link" ${grp.inviteURL ? '' : 'hidden'} data-url="${escapeHtml(grp.inviteURL || '')}" title="Copy Invite Link">
-            Invite Link
+            Copy invite
           </button>
         </div>
       </div>
@@ -328,7 +388,7 @@ function renderMyGroups() {
 
   container.querySelectorAll('.btn-open-group').forEach((btn) => {
     btn.addEventListener('click', () => {
-      selectGroup(btn.dataset.groupId);
+      openSavedGroup(btn.dataset.groupId);
     });
   });
 
@@ -336,22 +396,31 @@ function renderMyGroups() {
     btn.addEventListener('click', () => {
       SOUNDS.click();
       const url = btn.dataset.url || window.location.origin;
-      if (!navigator.clipboard) { alert(`Invite link: ${url}`); return; }
+      if (!navigator.clipboard) { window.prompt('Copy this invite link', url); return; }
       navigator.clipboard.writeText(url).then(() => {
-        alert('Group invite link copied to clipboard!');
-      }).catch(() => alert(`Invite link: ${url}`));
+        showToast('Invite copied — send it to each friend. Everyone joins from their own browser profile or device.');
+      }).catch(() => window.prompt('Copy this invite link', url));
     });
   });
 }
 
 async function selectGroup(groupId, preferredOffer = null) {
   try {
-    const group = await window.GroupPayRoom.open(groupId, preferredOffer?.domain);
+    const group = await window.GroupPayRoom.open(groupId, preferredOffer?.domain, preferredOffer?.id);
     if (!group) return;
     activeGroup = group;
     $('active-group-dot').style.display = 'inline-block';
     switchTab('collab');
   } catch (error) { setCollabStatus(`Could not open group: ${error.message}`); }
+}
+
+async function openSavedGroup(groupId) {
+  const group = await api(`/api/groups/${encodeURIComponent(groupId)}`);
+  if (group.merchantCheckout && window.GroupPayMerchant) {
+    await window.GroupPayMerchant.openGroup(groupId);
+    return;
+  }
+  await selectGroup(groupId);
 }
 
 function renderActiveGroupRoom() {
@@ -435,7 +504,7 @@ function setupGroupModals() {
       await selectGroup(newGrp.id, preferredOffer);
       setCollabStatus(`Group '${name}' created! Share invite link with friends.`);
     } catch (err) {
-      alert(`Could not create group: ${err.message}`);
+      showToast(`Could not create group: ${err.message}`, 'error');
     }
   });
 
@@ -461,10 +530,11 @@ function setupGroupModals() {
         await api(`/api/groups/${joined.id}/profile`, { alias });
       }
       await fetchMyGroups();
-      await selectGroup(joined.id);
+      if (joined.merchantCheckout && window.GroupPayMerchant) window.GroupPayMerchant.openGroup(joined.id);
+      else await selectGroup(joined.id);
       setCollabStatus(`Joined group '${joined.name}'!`);
     } catch (err) {
-      alert(`Could not join group: ${err.message}`);
+      showToast(`Could not join group: ${err.message}`, 'error');
     }
   });
 }
@@ -475,6 +545,8 @@ function openCreateGroupModal(preselectOfferId = null) {
   $('create-group-name').value = '';
   if (preselectOfferId) {
     $('create-group-offer-select').value = preselectOfferId;
+  } else {
+    $('create-group-offer-select').value = '';
   }
   $('create-group-name').focus();
 }
@@ -798,7 +870,6 @@ function setupWorkshopActions() {
 // INITIALIZATION
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
-  window.GroupPayDiscover.init({onPlan: openCreateGroupModal});
   setupTabs();
   setupCatalogFilters();
   setupRoomActions();
@@ -841,6 +912,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     config = await api('/api/config');
+    if (window.GroupPayMerchant) window.GroupPayMerchant.init({api, getConfig: () => config, show: () => switchTab('merchant'), showDiscover: () => switchTab('discover')});
+    window.GroupPayDiscover.init({onPlan: (offer) => {
+      if (!window.GroupPayMerchant) throw new Error('Merchant checkout could not load. Reload and try again.');
+      window.GroupPayMerchant.openOffer(offer);
+    }});
     window.GroupPayRoom.init({api, getConfig: () => config, getOffers: () => catalogOffers, openDiscover: () => switchTab('discover'), isVisible: () => currentTab === 'collab', onGroup(group) {
       activeGroup = group;
       const index = myGroups.findIndex((item) => item.id === group.id);
@@ -889,7 +965,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (inviteParam) {
       openJoinGroupModal(inviteParam);
     } else if (groupParam) {
-      await selectGroup(groupParam);
+      await openSavedGroup(groupParam);
     }
 
   } catch (err) {

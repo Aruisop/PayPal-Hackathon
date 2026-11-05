@@ -9,10 +9,13 @@ from app.planning.interpreter import AIError
 from app.workshops.checkout import Checkout, CheckoutError
 from app.bookings.service import CollabBooking
 from app.shared.errors import BookingError
+from app.expenses.ocr import ReceiptScanner, ReceiptScanError
+from app.expenses.service import Expenses, ExpenseError
 from app.groups.service import GroupError, Groups
 from app.payments.paypal import PayPal, PayPalError
 from app.groups.room import Room
 from app.recommendations.rescue import PlanRescue
+from app.recommendations.chat import ContextualAssistant
 from app.recommendations.semantic import LocalEncoder
 from app.recommendations.service import Recommendations
 from app.shared.storage import Store, versions
@@ -52,17 +55,18 @@ def _validate_production_config(app):
 def _register_dependencies(app, paypal, encoder):
     store = Store(app.config['DATABASE_URL'])
     if app.config['APP_ENV'] != 'production':
-        store.migrate(target=5)
+        store.migrate(target=8)
         store.seed()
     else:
         from sqlalchemy import select
         with store.engine.connect() as connection:
-            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 5:
+            if connection.execute(select(versions.c.revision).where(versions.c.id == 1)).scalar() != 8:
                 raise RuntimeError('Run python -m app migrate before starting')
     adapter = paypal or PayPal(
         os.getenv('PAYPAL_CLIENT_ID', ''), os.getenv('PAYPAL_CLIENT_SECRET', ''), os.getenv('PAYPAL_MERCHANT_ID', '')
     )
     checkout = Checkout(store, adapter)
+    shared_encoder = encoder if encoder is not None else LocalEncoder(model='bge', query_instruction=True)
     booking = CollabBooking(store, app.config['APP_ORIGIN'], adapter)
     app.extensions.update(
         store=store,
@@ -72,7 +76,10 @@ def _register_dependencies(app, paypal, encoder):
         booking=booking,
         room=Room(store),
         rescue=PlanRescue(store),
-        recommendations=Recommendations(store, encoder if encoder is not None else LocalEncoder(model='bge', query_instruction=True)),
+        recommendations=Recommendations(store, shared_encoder),
+        assistant=ContextualAssistant(store, app.config['APP_ORIGIN'], shared_encoder),
+        expenses=Expenses(store),
+        receipt_scanner=ReceiptScanner(),
     )
 
 
@@ -101,7 +108,7 @@ def _register_http_guards(app):
 
 
 def _register_error_handlers(app):
-    for error_type in (CheckoutError, GroupError, BookingError, AIError):
+    for error_type in (CheckoutError, GroupError, BookingError, AIError, ExpenseError, ReceiptScanError):
         app.register_error_handler(error_type, lambda error: (jsonify(error=error.issue), error.status))
 
     @app.errorhandler(PayPalError)
@@ -116,8 +123,13 @@ def _register_error_handlers(app):
     def invalid_json(_):
         return jsonify(error='INVALID_REQUEST'), 400
 
+    @app.errorhandler(413)
+    def too_large(_):
+        return jsonify(error='PAYLOAD_TOO_LARGE'), 413
+
 
 def _register_blueprints(app):
+    from .expenses.routes import blueprint as expenses_blueprint
     from .groups.routes import blueprint as groups_blueprint
     from .web.routes import blueprint as web_blueprint
     from .workshops.routes import blueprint as workshops_blueprint
@@ -125,3 +137,4 @@ def _register_blueprints(app):
     app.register_blueprint(web_blueprint)
     app.register_blueprint(groups_blueprint)
     app.register_blueprint(workshops_blueprint)
+    app.register_blueprint(expenses_blueprint)

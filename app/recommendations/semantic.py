@@ -1,7 +1,7 @@
 """Optional local CPU embeddings; hard booking decisions belong to Planning.
 
 No network I/O occurs here. Install requirements-ai.txt and explicitly prepare
-assets with model_assets.py. Only trusted catalog descriptions are cached;
+assets with python -m app.recommendations.assets. Only trusted catalog descriptions are cached;
 participant text and vectors are never retained by this module.
 """
 
@@ -102,6 +102,13 @@ class LocalEncoder:
             self._load()
             prefix = self.profile['query_prefix'] if self.query_instruction else ''
             return self._encode([prefix + text for text in texts])
+
+    def encode_documents(self, texts, maximum=64):
+        """Embed trusted passages without the BGE query instruction, without caching."""
+        self._validate_texts(texts, maximum)
+        with self._lock:
+            self._load()
+            return self._encode(list(texts))
 
     def _encode(self, texts):
         started = time.perf_counter()

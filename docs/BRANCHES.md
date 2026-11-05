@@ -1,6 +1,10 @@
-> Publication scope: UI-first review snapshot authorized for `Aruisop/PayPal-Hackathon` branch `dev/aarya`. Includes prior Slice 3/backend repairs and partially implemented, execution-unverified AI integration. No acceptance, merge or deployment is claimed.
+> 5 November 2026: `dev/aarya` integrates the guided-journey and stable split-contact pass from `dev/pan` with the existing merchant checkout, Bills & Splits UI and local Qwen receipt-vision work. Schema revision 8 adds contact snapshots after the published revision 7. This is a review candidate, not payment, browser or deployment acceptance. See [the current handoff](../Aarya_changes.md).
 
-> Current update (18 October 2026): after the original Slice 3 integration, the user authorized a guided UI redesign, optional on-device MiniLM semantic discovery, and verified private Plan Rescue. The full 132 Python tests, guided frontend contracts, AI boundary/worker contracts and 12 local-demo checks pass with mocks. Browser/model inference and real payment acceptance remain pending. See [handoff](../Aarya_changes.md). The snapshot below records historical branch status.
+> 28 October 2026: the local Slice 3 branch was fast-forwarded to `Aruisop/PayPal-Hackathon` `dev/aarya` at `4fabe98` before Common Ground phases 1-2. The audited update was published the next day as `01beea6`; this remains a review candidate, not release acceptance. See [current phase guide](GUIDED_EXPERIENCE_PHASES.md) and [handoff](../Aarya_changes.md). Older snapshots below remain historical.
+
+> Adversarial audit (28 October 2026): local BGE assets and real inference are verified. The active app reports the pinned model prepared; its first eligible request loads weights. The current saved catalog has no upcoming offers, so there is nothing to rank. The empty-catalog UI now explains this and hides irrelevant actions. The duplicate unverified browser MiniLM feature was removed. Rendered-browser and real multi-buyer Sandbox checks remain pending. See [handoff](../Aarya_changes.md).
+
+> Historical update (18 October 2026): after the original Slice 3 integration, the user authorized a guided UI redesign, optional on-device MiniLM semantic discovery, and verified private Plan Rescue. The full 132 Python tests, guided frontend contracts, AI boundary/worker contracts and 12 local-demo checks pass with mocks. Browser/model inference and real payment acceptance remain pending. See [handoff](../Aarya_changes.md). The snapshot below records historical branch status.
 
 
 # Branch map and delivery status
